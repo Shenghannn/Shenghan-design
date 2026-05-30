@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Ellipsis, ImageIcon, Search } from "lucide-react";
 import { Badge } from "../components/ui/badge";
@@ -10,20 +10,53 @@ import { Select, type SelectOption } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 
 type StaTaskStatus = "草稿" | "进行中" | "已发货" | "已取消" | "异常";
-type StaCurrentStep = "选择发货商品" | "商品装箱" | "配送服务" | "箱子标签" | "货件追踪";
+export type StaWizardStep = "选择发货商品" | "商品装箱" | "配送服务" | "箱子标签" | "货件追踪";
+type StaCurrentStep = StaWizardStep;
 
-type StaTaskRecord = {
+export type StaTaskProductLine = {
+  id: string;
+  msku: string;
+  fnsku: string;
+  asin: string;
+  productName: string;
+  sku: string;
+  plannedQty: number;
+  declaredQty: number;
+  prepProvider: string;
+  labelType: string;
+  validityPeriod: string;
+};
+
+export type StaConfirmedShipment = {
+  shipmentId: string;
+  fcCode: string;
+  deliveryAddress: string;
+  shipmentName?: string;
+};
+
+export type StaTaskRecord = {
   id: string;
   staNo: string;
   shipmentNo: string;
   skuCount: number;
   totalQty: number;
   marketplace: string;
+  store: string;
   sourceWarehouse: string;
   destination: string;
   status: StaTaskStatus;
   currentStep: StaCurrentStep;
   updatedAt: string;
+  taskName?: string;
+  inboundPlanId?: string;
+  shippingAddress?: string;
+  remark?: string;
+  creator?: string;
+  createdAt?: string;
+  placementFee?: string;
+  planCreated?: boolean;
+  products?: StaTaskProductLine[];
+  confirmedShipments?: StaConfirmedShipment[];
 };
 
 type FbaShipmentStatusCode =
@@ -40,9 +73,11 @@ type FbaShipmentStatusCode =
   | "CANCELLED"
   | "ABANDONED";
 
-type FbaShipmentRecord = {
+export type FbaShipmentRecord = {
   id: string;
   shipmentId: string;
+  staNo: string;
+  store: string;
   planNo: string;
   mskuCount: number;
   totalQty: number;
@@ -50,6 +85,7 @@ type FbaShipmentRecord = {
   boxMode: string;
   shipmentStatus: FbaShipmentStatusCode;
   completionStatus: "进行中" | "已完成";
+  currentStep: StaWizardStep;
   hasStaTask: boolean;
   updatedAt: string;
 };
@@ -210,27 +246,67 @@ function getDefaultThreeMonthRange() {
 
 const defaultThreeMonthRange = getDefaultThreeMonthRange();
 
-const threeMonthPresets = [
+const mockStaDetailProducts: StaTaskProductLine[] = [
   {
-    label: "近三个月",
-    start: defaultThreeMonthRange.start,
-    end: defaultThreeMonthRange.end,
+    id: "line-1",
+    msku: "BD-05-OS40171-4",
+    fnsku: "X004H77XVH",
+    asin: "B0DNTH2SF2",
+    productName: "氧传感器234-5038+2...",
+    sku: "OS40171-4",
+    plannedQty: 10,
+    declaredQty: 10,
+    prepProvider: "卖家",
+    labelType: "卖家自己贴标签",
+    validityPeriod: "2031-04-05",
+  },
+  {
+    id: "line-2",
+    msku: "BD-05-OS40171-4",
+    fnsku: "X004H77XVH",
+    asin: "B0DNTH2SF2",
+    productName: "氧传感器234-5038+2...",
+    sku: "OS40171-4",
+    plannedQty: 10,
+    declaredQty: 10,
+    prepProvider: "卖家",
+    labelType: "卖家自己贴标签",
+    validityPeriod: "2031-04-05",
+  },
+  {
+    id: "line-3",
+    msku: "BD-05-OS40171-4",
+    fnsku: "X004H77XVH",
+    asin: "B0DNTH2SF2",
+    productName: "氧传感器234-5038+2...",
+    sku: "OS40171-4",
+    plannedQty: 10,
+    declaredQty: 10,
+    prepProvider: "卖家",
+    labelType: "卖家自己贴标签",
+    validityPeriod: "2031-04-05",
   },
 ];
 
-const staTaskRecords: StaTaskRecord[] = [
+export const initialStaTaskRecords: StaTaskRecord[] = [
   {
     id: "sta-001",
     staNo: "STA-20260322-001",
+    taskName: "STA (03/22/2026 10:42 AM)",
     shipmentNo: "FBA18T6Q4V2",
-    skuCount: 8,
-    totalQty: 640,
+    skuCount: 3,
+    totalQty: 30,
     marketplace: "US",
+    store: "AMZ-CA-05店",
     sourceWarehouse: "上海集货仓",
     destination: "ONT8",
     status: "草稿",
     currentStep: "选择发货商品",
     updatedAt: "2026-03-22 10:42",
+    shippingAddress:
+      "Speed Winner, 301 Room, No.374, huangyuan road, jiangdong street, yiwu, Zhejiang, yiwu, Zhejiang, 322000, CN, 19906576321",
+    remark: "XXX备注内容XXX",
+    products: mockStaDetailProducts,
   },
   {
     id: "sta-002",
@@ -239,11 +315,50 @@ const staTaskRecords: StaTaskRecord[] = [
     skuCount: 5,
     totalQty: 420,
     marketplace: "CA",
+    store: "AMZ-CA-001",
     sourceWarehouse: "宁波前置仓",
     destination: "YYZ4",
     status: "进行中",
     currentStep: "商品装箱",
     updatedAt: "2026-03-22 09:18",
+    confirmedShipments: [
+      {
+        shipmentId: "FBA19CHTHLKB",
+        fcCode: "YYZ4",
+        deliveryAddress: "配送地址1XXXXX",
+        shipmentName: "FBA STA (22/03/2026 09:18)-YYZ4",
+      },
+      {
+        shipmentId: "FBA18T6Q4W9",
+        fcCode: "LAN2",
+        deliveryAddress: "配送地址2XXXXX",
+        shipmentName: "FBA STA (22/03/2026 09:18)-LAN2",
+      },
+    ],
+  },
+  {
+    id: "sta-004",
+    staNo: "STA-20260425-007",
+    taskName: "STA (04/25/2026 04:07 PM)",
+    inboundPlanId: "wfcd1bb199-2108-44f7-8b11-ae27f925b530",
+    shipmentNo: "-",
+    skuCount: 3,
+    totalQty: 30,
+    marketplace: "CA",
+    store: "AMZ-CA-05店",
+    sourceWarehouse: "义乌发货仓",
+    destination: "-",
+    status: "进行中",
+    currentStep: "选择发货商品",
+    updatedAt: "2026-04-25 16:07",
+    planCreated: true,
+    placementFee: "USD10",
+    creator: "张三",
+    createdAt: "2026-04-25 16:07",
+    shippingAddress:
+      "Speed Winner, 301 Room, No.374, huangyuan road, jiangdong street, yiwu, Zhejiang, yiwu, Zhejiang, 322000, CN, 19906576321",
+    remark: "XXX备注内容XXX",
+    products: mockStaDetailProducts,
   },
   {
     id: "sta-003",
@@ -252,6 +367,7 @@ const staTaskRecords: StaTaskRecord[] = [
     skuCount: 12,
     totalQty: 960,
     marketplace: "US",
+    store: "AMZ-US-028",
     sourceWarehouse: "深圳保税仓",
     destination: "LGB8",
     status: "异常",
@@ -260,45 +376,54 @@ const staTaskRecords: StaTaskRecord[] = [
   },
 ];
 
-const fbaShipmentRecords: FbaShipmentRecord[] = [
+export const initialFbaShipmentRecords: FbaShipmentRecord[] = [
   {
     id: "fba-001",
     shipmentId: "FBA19CHTHLKB",
-    planNo: "PLN-20260322-001",
-    mskuCount: 14,
-    totalQty: 1280,
-    destinationFc: "ONT8",
+    staNo: "STA-20260322-002",
+    store: "AMZ-CA-001",
+    planNo: "PLN-20260322-002",
+    mskuCount: 5,
+    totalQty: 420,
+    destinationFc: "YYZ4",
     boxMode: "先分仓再装箱",
     shipmentStatus: "WORKING",
     completionStatus: "进行中",
+    currentStep: "商品装箱",
     hasStaTask: true,
-    updatedAt: "2026-03-22 11:08",
+    updatedAt: "2026-03-22 09:18",
   },
   {
     id: "fba-002",
     shipmentId: "FBA18T6Q4W9",
+    staNo: "STA-20260322-002",
+    store: "AMZ-CA-001",
     planNo: "PLN-20260322-002",
-    mskuCount: 7,
-    totalQty: 520,
-    destinationFc: "YYZ4",
-    boxMode: "先装箱再分仓",
-    shipmentStatus: "READY_TO_SHIP",
+    mskuCount: 5,
+    totalQty: 420,
+    destinationFc: "LAN2",
+    boxMode: "先分仓再装箱",
+    shipmentStatus: "WORKING",
     completionStatus: "进行中",
+    currentStep: "商品装箱",
     hasStaTask: true,
-    updatedAt: "2026-03-22 10:26",
+    updatedAt: "2026-03-22 09:18",
   },
   {
     id: "fba-003",
     shipmentId: "FBA18T6Q3A7",
+    staNo: "STA-20260321-018",
+    store: "AMZ-US-028",
     planNo: "PLN-20260321-018",
-    mskuCount: 18,
-    totalQty: 1540,
+    mskuCount: 12,
+    totalQty: 960,
     destinationFc: "LGB8",
     boxMode: "先分仓再装箱",
-    shipmentStatus: "CLOSED",
-    completionStatus: "已完成",
-    hasStaTask: false,
-    updatedAt: "2026-03-21 19:12",
+    shipmentStatus: "SHIPPED",
+    completionStatus: "进行中",
+    currentStep: "配送服务",
+    hasStaTask: true,
+    updatedAt: "2026-03-21 18:36",
   },
 ];
 
@@ -453,7 +578,7 @@ function MultiSelect({
 function FilterTimeRangeField({
   timeTypeOptions,
   defaultTimeType,
-  widthClass = "min-w-[360px]",
+  widthClass = "w-auto",
 }: {
   timeTypeOptions: SelectOption[];
   defaultTimeType: string;
@@ -469,11 +594,7 @@ function FilterTimeRangeField({
           options={timeTypeOptions}
           className="w-[152px] shrink-0"
         />
-        <DateRangePicker
-          value={dateRange}
-          onChange={setDateRange}
-          presets={threeMonthPresets}
-        />
+        <DateRangePicker value={dateRange} onChange={setDateRange} />
       </div>
     </FilterField>
   );
@@ -496,9 +617,11 @@ function FilterQueryActions({ className }: { className?: string }) {
 function KeywordSearchField({
   fieldOptions,
   defaultField,
+  inputWidthClass = "w-[200px]",
 }: {
   fieldOptions: SelectOption[];
   defaultField: string;
+  inputWidthClass?: string;
 }) {
   const [field, setField] = useState(defaultField);
   const [fieldMenuOpen, setFieldMenuOpen] = useState(false);
@@ -506,28 +629,39 @@ function KeywordSearchField({
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkDraft, setBulkDraft] = useState("");
   const [bulkApplied, setBulkApplied] = useState("");
-  const [fieldMenuStyle, setFieldMenuStyle] = useState<{ top: number; left: number; minWidth: number }>({
+  const [fieldSelectorWidth, setFieldSelectorWidth] = useState(0);
+  const [fieldMenuStyle, setFieldMenuStyle] = useState<{ top: number; left: number; width: number }>({
     top: 0,
     left: 0,
-    minWidth: 0,
+    width: 0,
   });
   const rootRef = useRef<HTMLDivElement>(null);
   const fieldTriggerRef = useRef<HTMLButtonElement>(null);
   const bulkPanelRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
 
   const selectedField =
     fieldOptions.find((option) => option.value === field) ?? fieldOptions[0];
-
-  const fieldMenuMinWidth = Math.max(
-    ...fieldOptions.map((option) => option.label.length * 14 + 32),
-    selectedField.label.length * 14 + 40,
-    148,
-  );
 
   const bulkLineCount = bulkApplied
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean).length;
+
+  useLayoutEffect(() => {
+    const measureEl = measureRef.current;
+    if (!measureEl) {
+      return;
+    }
+
+    let maxTextWidth = 0;
+    for (const option of fieldOptions) {
+      measureEl.textContent = option.label;
+      maxTextWidth = Math.max(maxTextWidth, measureEl.offsetWidth);
+    }
+
+    setFieldSelectorWidth(maxTextWidth + 40);
+  }, [fieldOptions]);
 
   useLayoutEffect(() => {
     if (!fieldMenuOpen) {
@@ -544,7 +678,7 @@ function KeywordSearchField({
       setFieldMenuStyle({
         top: rect.bottom + 4,
         left: rect.left,
-        minWidth: Math.max(rect.width, fieldMenuMinWidth),
+        width: fieldSelectorWidth,
       });
     }
 
@@ -556,7 +690,7 @@ function KeywordSearchField({
       window.removeEventListener("resize", updateMenuPosition);
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [fieldMenuMinWidth, fieldMenuOpen]);
+  }, [fieldMenuOpen, fieldSelectorWidth]);
 
   useEffect(() => {
     if (!fieldMenuOpen && !bulkOpen) {
@@ -607,15 +741,20 @@ function KeywordSearchField({
   }
 
   return (
-    <div ref={rootRef} className="relative w-full min-w-[280px]">
-      <div className="flex h-input-md w-full min-w-0 rounded-sm border border-border bg-white focus-within:border-border-focus focus-within:ring-2 focus-within:ring-primary-subtle">
+    <div ref={rootRef} className="relative inline-flex w-auto">
+      <span
+        ref={measureRef}
+        aria-hidden="true"
+        className="pointer-events-none invisible absolute whitespace-nowrap text-body"
+      />
+      <div className="flex h-input-md w-auto rounded-sm border border-border bg-white focus-within:border-border-focus focus-within:ring-2 focus-within:ring-primary-subtle">
         <div className="relative shrink-0 border-r border-border">
           <button
             ref={fieldTriggerRef}
             type="button"
             aria-haspopup="listbox"
             aria-expanded={fieldMenuOpen}
-            style={{ minWidth: fieldMenuMinWidth }}
+            style={{ width: fieldSelectorWidth || undefined }}
             className="flex h-full items-center justify-between gap-2 px-3 text-body text-text-primary transition hover:bg-bg-hover"
             onClick={() => {
               setFieldMenuOpen((current) => !current);
@@ -638,7 +777,7 @@ function KeywordSearchField({
                     position: "fixed",
                     top: fieldMenuStyle.top,
                     left: fieldMenuStyle.left,
-                    minWidth: fieldMenuStyle.minWidth,
+                    width: fieldMenuStyle.width,
                     zIndex: 80,
                   }}
                   className="max-h-60 overflow-auto rounded-sm border border-border bg-white p-1 shadow-md"
@@ -671,7 +810,7 @@ function KeywordSearchField({
           value={bulkApplied ? "" : keyword}
           placeholder={bulkApplied ? `已填写 ${bulkLineCount} 项` : "..."}
           readOnly={Boolean(bulkApplied)}
-          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-body text-text-primary outline-none placeholder:text-text-placeholder read-only:cursor-default"
+          className={`${inputWidthClass} shrink-0 border-0 bg-transparent px-3 text-body text-text-primary outline-none placeholder:text-text-placeholder read-only:cursor-default`}
           onChange={(event) => {
             setKeyword(event.target.value);
             if (bulkApplied) {
@@ -760,8 +899,10 @@ function ActionLinkButton({
 
 function ActionDropdown({
   options,
+  onSelect,
 }: {
   options: Array<{ label: string; value: string }>;
+  onSelect?: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -795,7 +936,10 @@ function ActionDropdown({
             <button
               key={option.value}
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false);
+                onSelect?.(option.value);
+              }}
               className="flex w-full border-0 bg-transparent px-3 py-2 text-left text-small text-primary hover:underline focus-visible:outline-none"
             >
               {option.label}
@@ -807,11 +951,102 @@ function ActionDropdown({
   );
 }
 
+function getShippingPlanActionOptions(status: ShippingPlanStatus): SelectOption[] {
+  switch (status) {
+    case "待提交":
+      return [
+        { label: "作废", value: "void" },
+        { label: "提交", value: "submit" },
+        { label: "编辑", value: "edit" },
+      ];
+    case "待审批":
+      return [
+        { label: "作废", value: "void" },
+        { label: "审批", value: "approve" },
+      ];
+    case "待处理":
+      return [
+        { label: "作废", value: "void" },
+        { label: "生成备货单", value: "create-stockup" },
+        { label: "整单已处理", value: "order-processed" },
+        { label: "产品已处理", value: "product-processed" },
+        { label: "创建STA任务", value: "create-sta" },
+      ];
+    case "已驳回":
+      return [
+        { label: "作废", value: "void" },
+        { label: "提交", value: "submit" },
+        { label: "编辑", value: "edit" },
+      ];
+    case "已完成":
+    case "已作废":
+    default:
+      return [];
+  }
+}
+
+function ShippingPlanOperationCell({
+  record,
+  onAction,
+}: {
+  record: ShippingPlanRecord;
+  onAction?: (action: string, record: ShippingPlanRecord) => void;
+}) {
+  const options = getShippingPlanActionOptions(record.documentStatus);
+
+  return (
+    <td className="whitespace-nowrap px-3 py-3">
+      <div className="flex flex-nowrap items-center justify-end gap-3">
+        <ActionLinkButton>详情</ActionLinkButton>
+        {options.length > 0 ? (
+          <ActionDropdown options={options} onSelect={(value) => onAction?.(value, record)} />
+        ) : null}
+      </div>
+    </td>
+  );
+}
+
 const actionSelectOptions = [
   { label: "编辑", value: "edit" },
   { label: "生成备货单", value: "create-stockup" },
   { label: "取消", value: "cancel" },
 ];
+
+function StaTaskOperationCell({
+  record,
+  onAction,
+  onView,
+}: {
+  record: StaTaskRecord;
+  onAction?: (action: string, record: StaTaskRecord) => void;
+  onView?: (record: StaTaskRecord) => void;
+}) {
+  return (
+    <td className="whitespace-nowrap px-3 py-3">
+      <div className="flex flex-nowrap items-center justify-end gap-3">
+        <ActionLinkButton onClick={() => onView?.(record)}>详情</ActionLinkButton>
+        <ActionDropdown options={actionSelectOptions} onSelect={(value) => onAction?.(value, record)} />
+      </div>
+    </td>
+  );
+}
+
+function FbaShipmentOperationCell({
+  record,
+  onAction,
+}: {
+  record: FbaShipmentRecord;
+  onAction?: (action: string, record: FbaShipmentRecord) => void;
+}) {
+  return (
+    <td className="whitespace-nowrap px-3 py-3">
+      <div className="flex flex-nowrap items-center justify-end gap-3">
+        <ActionLinkButton>详情</ActionLinkButton>
+        <ActionDropdown options={actionSelectOptions} onSelect={(value) => onAction?.(value, record)} />
+      </div>
+    </td>
+  );
+}
 
 function TableOperationCell() {
   return (
@@ -832,58 +1067,690 @@ function TableStatusCell({ children }: { children: ReactNode }) {
   );
 }
 
-function PrototypePagination() {
+function useListSelection(rowIds: string[]) {
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const selectedCount = rowIds.filter((id) => selectedIds.includes(id)).length;
+  const allSelected = rowIds.length > 0 && selectedCount === rowIds.length;
+  const partiallySelected = selectedCount > 0 && selectedCount < rowIds.length;
+
+  function isSelected(id: string) {
+    return selectedIds.includes(id);
+  }
+
+  function toggleRow(id: string) {
+    setSelectedIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  }
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds((current) => current.filter((id) => !rowIds.includes(id)));
+      return;
+    }
+
+    setSelectedIds((current) => Array.from(new Set([...current, ...rowIds])));
+  }
+
+  return {
+    isSelected,
+    toggleRow,
+    toggleAll,
+    allSelected,
+    partiallySelected,
+  };
+}
+
+function TableSelectAllCheckbox({
+  checked,
+  indeterminate,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+
+  useLayoutEffect(() => {
+    if (ref.current) {
+      ref.current.indeterminate = indeterminate;
+    }
+  }, [indeterminate, checked]);
+
+  return <input ref={ref} type="checkbox" checked={checked} onChange={onChange} />;
+}
+
+function TableRowCheckbox({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return <input type="checkbox" checked={checked} onChange={onChange} />;
+}
+
+function ListToolbar({
+  primaryActions,
+  importExportActions,
+}: {
+  primaryActions?: ReactNode;
+  importExportActions?: ReactNode;
+}) {
   return (
-    <div className="flex items-center justify-end gap-3 border-t border-border px-4 py-3 text-small text-text-muted">
-      <span>共 1000 条</span>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-actions">
+      <div className="flex flex-wrap items-center gap-actions">{primaryActions}</div>
+      <div className="flex flex-wrap items-center gap-actions">{importExportActions}</div>
+    </div>
+  );
+}
+
+const prototypePageSizeOptions = [10, 20, 30, 50, 100];
+
+function buildPrototypePageItems(currentPage: number, totalPages: number): Array<number | "ellipsis"> {
+  if (totalPages <= 5) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const items: Array<number | "ellipsis"> = [1];
+
+  if (currentPage > 3) {
+    items.push("ellipsis");
+  }
+
+  const start = Math.max(2, currentPage - 1);
+  const end = Math.min(totalPages - 1, currentPage + 1);
+
+  for (let page = start; page <= end; page += 1) {
+    items.push(page);
+  }
+
+  if (currentPage < totalPages - 2) {
+    items.push("ellipsis");
+  }
+
+  items.push(totalPages);
+  return items;
+}
+
+function usePrototypePagination<T>(items: T[], resetKey?: string | number) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(prototypePageSizeOptions[0]);
+
+  const totalCount = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  useEffect(() => {
+    setPage(1);
+  }, [resetKey, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const pagedItems = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return items.slice(start, start + pageSize);
+  }, [items, page, pageSize]);
+
+  function handlePageSizeChange(nextPageSize: number) {
+    setPageSize(nextPageSize);
+  }
+
+  return {
+    page,
+    pageSize,
+    totalCount,
+    totalPages,
+    pagedItems,
+    setPage,
+    setPageSize: handlePageSizeChange,
+  };
+}
+
+type PrototypePaginationProps = {
+  currentPage: number;
+  totalPages: number;
+  totalCount: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
+};
+
+function PrototypePagination({
+  currentPage,
+  totalPages,
+  totalCount,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+}: PrototypePaginationProps) {
+  const pageItems = buildPrototypePageItems(currentPage, totalPages);
+
+  return (
+    <div className="flex items-center justify-end gap-3 border-t border-border bg-white px-4 py-3 text-small text-text-muted">
+      <span>共 {totalCount} 条</span>
       <div className="flex items-center gap-1">
-        <Button variant="secondary" size="sm" disabled>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={currentPage <= 1}
+          onClick={() => onPageChange(Math.max(currentPage - 1, 1))}
+        >
           上一页
         </Button>
-        <Button variant="primary" size="sm">
-          1
-        </Button>
-        <Button variant="secondary" size="sm">
-          2
-        </Button>
-        <Button variant="secondary" size="sm">
-          3
-        </Button>
-        <Button variant="secondary" size="sm">
-          ...
-        </Button>
-        <Button variant="secondary" size="sm">
+        {pageItems.map((item, index) =>
+          item === "ellipsis" ? (
+            <Button key={`ellipsis-${index}`} variant="secondary" size="sm" disabled>
+              ...
+            </Button>
+          ) : (
+            <Button
+              key={item}
+              variant={item === currentPage ? "primary" : "secondary"}
+              size="sm"
+              onClick={() => onPageChange(item)}
+            >
+              {item}
+            </Button>
+          ),
+        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={currentPage >= totalPages}
+          onClick={() => onPageChange(Math.min(currentPage + 1, totalPages))}
+        >
           下一页
         </Button>
       </div>
       <Select
-        defaultValue="10"
+        value={String(pageSize)}
         menuPlacement="top"
         className="w-[96px]"
-        options={[
-          { label: "10条/页", value: "10" },
-          { label: "20条/页", value: "20" },
-          { label: "50条/页", value: "50" },
-          { label: "100条/页", value: "100" },
-        ]}
+        onValueChange={(value) => onPageSizeChange(Number(value))}
+        options={prototypePageSizeOptions.map((size) => ({
+          label: `${size}条/页`,
+          value: String(size),
+        }))}
       />
     </div>
   );
 }
 
-export function StaTaskPage() {
+function ScrollableTablePanel({
+  children,
+  tableFooter,
+  pagination,
+}: {
+  children: ReactNode;
+  tableFooter?: ReactNode;
+  pagination: PrototypePaginationProps;
+}) {
+  return (
+    <div className="overflow-hidden rounded-md border border-border">
+      <div className="overflow-x-auto">{children}</div>
+      {tableFooter}
+      <PrototypePagination {...pagination} />
+    </div>
+  );
+}
+
+const shippingPlanKeywordFieldOptions: SelectOption[] = [
+  { label: "备货单号", value: "stock-order-no" },
+  { label: "发货计划号", value: "plan-no" },
+  { label: "SKU", value: "sku" },
+];
+
+const platformFilterOptions: SelectOption[] = [
+  { label: "Amazon", value: "amazon" },
+  { label: "Walmart", value: "walmart" },
+  { label: "Shopify", value: "shopify" },
+  { label: "ebay", value: "ebay" },
+  { label: "TikTok", value: "tiktok" },
+  { label: "Temu", value: "temu" },
+  { label: "AliExpress", value: "aliexpress" },
+];
+
+const shipWarehouseFilterOptions: SelectOption[] = [
+  { label: "测试仓库101", value: "wh-101" },
+  { label: "AMZ-US-028仓", value: "amz-us-028" },
+  { label: "ebay测试仓", value: "ebay-test" },
+];
+
+const shipWarehouseTypeOptions: SelectOption[] = [
+  { label: "虚拟仓", value: "virtual" },
+  { label: "实体仓", value: "physical" },
+];
+
+const receiveWarehouseTypeOptions: SelectOption[] = [
+  { label: "三方仓", value: "third-party" },
+  { label: "实体仓", value: "physical" },
+];
+
+const receiveWarehouseFilterOptions: SelectOption[] = [
+  { label: "FBA-ONT8", value: "ont8" },
+  { label: "FBA-YYZ4", value: "yyz4" },
+  { label: "Walmart仓", value: "walmart-wh" },
+];
+
+const logisticsChannelOptions: SelectOption[] = [
+  { label: "普快", value: "standard" },
+  { label: "特快", value: "express" },
+  { label: "海运", value: "sea" },
+  { label: "海运散货", value: "sea-lcl" },
+  { label: "测试", value: "test" },
+];
+
+const transportModeOptions: SelectOption[] = [
+  { label: "海运", value: "sea" },
+  { label: "快递", value: "express" },
+];
+
+const shippingPlanTimeTypeOptions: SelectOption[] = [
+  { label: "创建时间", value: "created-at" },
+  { label: "更新时间", value: "updated-at" },
+];
+
+type ShippingPlanStatus = "待提交" | "待审批" | "待处理" | "已完成" | "已驳回" | "已作废";
+
+export type ShippingPlanRecord = {
+  id: string;
+  planNo: string;
+  platform: string;
+  store: string;
+  shipWarehouseType: string;
+  shipWarehouse: string;
+  receiveWarehouseType: string;
+  receiveWarehouse: string;
+  logisticsCycle: string;
+  deliveryMode: string;
+  logisticsChannel: string;
+  transportMode: string;
+  totalWeight: number;
+  totalVolume: number;
+  relatedStockOrderNo: string;
+  remark: string;
+  estimatedShipTime: string;
+  creator: string;
+  createdAt: string;
+  updater: string;
+  updatedAt: string;
+  documentStatus: ShippingPlanStatus;
+  plannedQty: number;
+};
+
+const shippingPlanStatusTabDefinitions: Array<{
+  label: string;
+  value: string;
+  status: ShippingPlanStatus | null;
+}> = [
+  { label: "全部", value: "all", status: null },
+  { label: "待提交", value: "pending-submit", status: "待提交" },
+  { label: "待审批", value: "pending-approval", status: "待审批" },
+  { label: "待处理", value: "pending-process", status: "待处理" },
+  { label: "已完成", value: "completed", status: "已完成" },
+  { label: "已驳回", value: "rejected", status: "已驳回" },
+  { label: "已作废", value: "voided", status: "已作废" },
+];
+
+function buildShippingPlanStatusTabs(records: ShippingPlanRecord[]) {
+  return shippingPlanStatusTabDefinitions.map((tab) => ({
+    label: tab.label,
+    value: tab.value,
+    count: tab.status === null
+      ? records.length
+      : records.filter((record) => record.documentStatus === tab.status).length,
+  }));
+}
+
+function filterShippingPlanRecordsByStatusTab(
+  records: ShippingPlanRecord[],
+  activeTab: string,
+) {
+  if (activeTab === "all") {
+    return records;
+  }
+
+  const matchedTab = shippingPlanStatusTabDefinitions.find((tab) => tab.value === activeTab);
+  if (!matchedTab?.status) {
+    return records;
+  }
+
+  return records.filter((record) => record.documentStatus === matchedTab.status);
+}
+
+const shippingPlanMockPlatforms = ["Amazon", "ebay", "Shopify", "Walmart", "TikTok", "Temu"] as const;
+const shippingPlanMockStores = [
+  "AMZ-US-028",
+  "ebay测试店",
+  "Shopify独立站",
+  "Walmart-US店",
+  "TikTok-US店",
+  "Temu-EU店",
+] as const;
+const shippingPlanMockCreators = ["张三", "李四", "王五", "赵六", "陈七"] as const;
+const shippingPlanMockRemarks = ["优先处理", "加急", "驳回后修改", "常规发货", "-"] as const;
+
+function createShippingPlanMockRecords(): ShippingPlanRecord[] {
+  const statuses: ShippingPlanStatus[] = ["待提交", "待审批", "待处理", "已完成", "已驳回", "已作废"];
+
+  return statuses.flatMap((documentStatus, statusIndex) =>
+    Array.from({ length: 10 }, (_, itemIndex) => {
+      const sequence = statusIndex * 10 + itemIndex + 1;
+      const variant = sequence % 6;
+      const day = String((sequence % 28) + 1).padStart(2, "0");
+
+      return {
+        id: `sp-${String(sequence).padStart(3, "0")}`,
+        planNo: `SP202603${day}${String(sequence).padStart(4, "0")}`,
+        platform: shippingPlanMockPlatforms[variant],
+        store: shippingPlanMockStores[variant],
+        shipWarehouseType: variant % 2 === 0 ? "实体仓" : "虚拟仓",
+        shipWarehouse: variant % 3 === 0 ? "AMZ-US-028仓" : "测试仓库101",
+        receiveWarehouseType: variant % 2 === 0 ? "三方仓" : "实体仓",
+        receiveWarehouse: ["FBA-ONT8", "FBA-YYZ4", "Walmart仓"][variant % 3],
+        logisticsCycle: `2026-03-${day} ~ 2026-04-${String((variant % 9) + 1).padStart(2, "0")}`,
+        deliveryMode: variant % 2 === 0 ? "FBA" : "海外仓",
+        logisticsChannel: ["普快", "特快", "海运"][variant % 3],
+        transportMode: variant % 2 === 0 ? "快递" : "海运",
+        totalWeight: Number((45 + sequence * 13.5).toFixed(1)),
+        totalVolume: Number((0.8 + sequence * 0.42).toFixed(2)),
+        relatedStockOrderNo: `STO202603${day}${String(sequence).padStart(3, "0")}`,
+        remark: shippingPlanMockRemarks[variant % shippingPlanMockRemarks.length],
+        estimatedShipTime: `2026-03-${day}`,
+        creator: shippingPlanMockCreators[variant % shippingPlanMockCreators.length],
+        createdAt: `2026-03-${day} ${String(8 + (variant % 10)).padStart(2, "0")}:${String(variant * 7 % 60).padStart(2, "0")}`,
+        updater: shippingPlanMockCreators[(variant + 1) % shippingPlanMockCreators.length],
+        updatedAt: `2026-03-${day} ${String(10 + (variant % 8)).padStart(2, "0")}:${String((variant + 3) * 5 % 60).padStart(2, "0")}`,
+        documentStatus,
+        plannedQty: 120 * (sequence % 20 + 1),
+      };
+    }),
+  );
+}
+
+const shippingPlanRecords = createShippingPlanMockRecords();
+
+function shippingPlanStatusTone(status: ShippingPlanStatus) {
+  switch (status) {
+    case "已完成":
+      return "success";
+    case "已驳回":
+      return "error";
+    case "已作废":
+      return "closed";
+    case "待审批":
+      return "processing";
+    case "待处理":
+      return "pending";
+    default:
+      return "draft";
+  }
+}
+
+function StatusTabs({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: Array<{ label: string; value: string; count: number }>;
+  active: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-6 border-b border-border">
+      {tabs.map((tab) => {
+        const isActive = tab.value === active;
+        return (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => onChange(tab.value)}
+            className={`-mb-px border-b-2 pb-3 text-body transition ${
+              isActive
+                ? "border-primary font-medium text-primary"
+                : "border-transparent text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            {tab.label}({tab.count})
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function EstimatedShipTimeField() {
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+
+  return (
+    <FilterField widthClass="w-auto">
+      <DateRangePicker value={dateRange} onChange={setDateRange} />
+    </FilterField>
+  );
+}
+
+export function ShippingPlanPage({
+  onCreateStaTask,
+}: {
+  onCreateStaTask?: (record: ShippingPlanRecord) => void;
+}) {
+  const [activeStatusTab, setActiveStatusTab] = useState("all");
+  const statusTabs = useMemo(() => buildShippingPlanStatusTabs(shippingPlanRecords), []);
+  const filteredRecords = useMemo(
+    () => filterShippingPlanRecordsByStatusTab(shippingPlanRecords, activeStatusTab),
+    [activeStatusTab],
+  );
+  const {
+    page,
+    pageSize,
+    totalCount,
+    totalPages,
+    pagedItems,
+    setPage,
+    setPageSize,
+  } = usePrototypePagination(filteredRecords, activeStatusTab);
+  const rowIds = useMemo(() => pagedItems.map((record) => record.id), [pagedItems]);
+  const selection = useListSelection(rowIds);
+  const paginationProps: PrototypePaginationProps = {
+    currentPage: page,
+    totalPages,
+    totalCount,
+    pageSize,
+    onPageChange: setPage,
+    onPageSizeChange: setPageSize,
+  };
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="发货计划"
+        description="用于预览发货计划查询、审批与导出，当前页面仅展示原型交互。"
+      />
+
+      <Card>
+        <StatusTabs tabs={statusTabs} active={activeStatusTab} onChange={setActiveStatusTab} />
+        <div className="mt-4">
+          <FilterBar>
+            <FilterField widthClass="w-[148px]">
+              <MultiSelect options={platformFilterOptions} placeholder="请选择平台" />
+            </FilterField>
+            <FilterField widthClass="w-[148px]">
+              <MultiSelect options={storeFilterOptions} placeholder="请选择店铺" />
+            </FilterField>
+            <FilterField widthClass="w-[164px]">
+              <MultiSelect options={shipWarehouseFilterOptions} placeholder="请选择发货仓库" />
+            </FilterField>
+            <FilterField widthClass="w-[180px]">
+              <MultiSelect options={shipWarehouseTypeOptions} placeholder="请选择发货仓库类型" />
+            </FilterField>
+            <FilterField widthClass="w-[180px]">
+              <MultiSelect options={receiveWarehouseTypeOptions} placeholder="请选择收货仓库类型" />
+            </FilterField>
+            <FilterField widthClass="w-[164px]">
+              <MultiSelect options={receiveWarehouseFilterOptions} placeholder="请选择收货仓库" />
+            </FilterField>
+            <FilterField widthClass="w-[180px]">
+              <MultiSelect options={logisticsChannelOptions} placeholder="请选择物流渠道" />
+            </FilterField>
+            <FilterField widthClass="w-[148px]">
+              <MultiSelect options={transportModeOptions} placeholder="请选择运输方式" />
+            </FilterField>
+            <EstimatedShipTimeField />
+            <FilterTimeRangeField
+              timeTypeOptions={shippingPlanTimeTypeOptions}
+              defaultTimeType="created-at"
+              widthClass="min-w-[360px]"
+            />
+            <FilterField widthClass="w-auto">
+              <KeywordSearchField
+                fieldOptions={shippingPlanKeywordFieldOptions}
+                defaultField="stock-order-no"
+              />
+            </FilterField>
+            <FilterQueryActions />
+          </FilterBar>
+        </div>
+      </Card>
+
+      <Card title="发货计划列表">
+        <ListToolbar
+          primaryActions={
+            <>
+              <Button variant="primary" size="sm">创建发货计划</Button>
+              <Button variant="secondary" size="sm">审批</Button>
+              <Button variant="secondary" size="sm">作废</Button>
+              <Button variant="secondary" size="sm">提交</Button>
+            </>
+          }
+          importExportActions={
+            <>
+              <Button variant="secondary" size="sm">导入发货计划</Button>
+              <Button variant="secondary" size="sm">导出</Button>
+            </>
+          }
+        />
+        <ScrollableTablePanel pagination={paginationProps}>
+          <table className="w-full min-w-[3200px] border-collapse text-left text-small">
+            <thead className="bg-bg-page text-text-muted">
+              <tr>
+                <th className={`w-10 ${tableHeadCell}`}>
+                  <TableSelectAllCheckbox
+                    checked={selection.allSelected}
+                    indeterminate={selection.partiallySelected}
+                    onChange={selection.toggleAll}
+                  />
+                </th>
+                <th className={tableHeadCell}>发货计划单号</th>
+                <th className={tableHeadCell}>平台</th>
+                <th className={tableHeadCell}>店铺</th>
+                <th className={tableHeadCell}>发货仓库类型</th>
+                <th className={tableHeadCell}>发货仓库</th>
+                <th className={tableHeadCell}>收货仓库类型</th>
+                <th className={tableHeadCell}>收货仓库</th>
+                <th className={tableHeadCell}>物流计划周期</th>
+                <th className={tableHeadCell}>发货方式</th>
+                <th className={tableHeadCell}>物流渠道</th>
+                <th className={tableHeadCell}>运输方式</th>
+                <th className={tableHeadCell}>总毛重(kg)</th>
+                <th className={tableHeadCell}>总体积(m³)</th>
+                <th className={tableHeadCell}>关联备货单号</th>
+                <th className={tableHeadCell}>备注</th>
+                <th className={tableHeadCell}>预计发货时间</th>
+                <th className={tableHeadCell}>创建人/创建时间</th>
+                <th className={tableHeadCell}>更新人/更新时间</th>
+                <th className={tableHeadCell}>单据状态</th>
+                <th className={tableHeadCell}>计划发货数量</th>
+                <th className={tableHeadCell}>操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border bg-white">
+              {pagedItems.map((record) => (
+                <tr key={record.id}>
+                  <td className="px-3 py-3">
+                    <TableRowCheckbox
+                      checked={selection.isSelected(record.id)}
+                      onChange={() => selection.toggleRow(record.id)}
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 font-medium text-primary">{record.planNo}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.platform}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.store}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.shipWarehouseType}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.shipWarehouse}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.receiveWarehouseType}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.receiveWarehouse}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.logisticsCycle}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.deliveryMode}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.logisticsChannel}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.transportMode}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.totalWeight}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.totalVolume}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.relatedStockOrderNo}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.remark}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.estimatedShipTime}</td>
+                  <td className="whitespace-nowrap px-3 py-3">
+                    <div>{record.creator}</div>
+                    <div className="text-text-muted">{record.createdAt}</div>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3">
+                    <div>{record.updater}</div>
+                    <div className="text-text-muted">{record.updatedAt}</div>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3">
+                    <Badge tone={shippingPlanStatusTone(record.documentStatus)} className="shrink-0">
+                      {record.documentStatus}
+                    </Badge>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.plannedQty}</td>
+                  <ShippingPlanOperationCell record={record} onAction={onCreateStaTask ? (action, item) => {
+                    if (action === "create-sta") {
+                      onCreateStaTask(item);
+                    }
+                  } : undefined} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ScrollableTablePanel>
+      </Card>
+    </div>
+  );
+}
+
+export function StaTaskPage({
+  records,
+  onEditStaTask,
+  onViewStaTask,
+}: {
+  records: StaTaskRecord[];
+  onEditStaTask?: (record: StaTaskRecord) => void;
+  onViewStaTask?: (record: StaTaskRecord) => void;
+}) {
+  const {
+    page,
+    pageSize,
+    totalCount,
+    totalPages,
+    pagedItems,
+    setPage,
+    setPageSize,
+  } = usePrototypePagination(records);
+  const rowIds = useMemo(() => pagedItems.map((record) => record.id), [pagedItems]);
+  const selection = useListSelection(rowIds);
+  const paginationProps: PrototypePaginationProps = {
+    currentPage: page,
+    totalPages,
+    totalCount,
+    pageSize,
+    onPageChange: setPage,
+    onPageSizeChange: setPageSize,
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader
         title="STA任务"
         description="用于预览STA任务查询、分仓生成和异常说明，当前页面仅展示原型交互。"
-        actions={
-          <>
-            <Button variant="secondary" size="sm">导入</Button>
-            <Button variant="secondary" size="sm">导出</Button>
-            <Button variant="primary" size="sm">生成STA任务</Button>
-          </>
-        }
       />
 
       <Card>
@@ -912,7 +1779,7 @@ export function StaTaskPage() {
             defaultTimeType="created-at"
             widthClass="min-w-[360px]"
           />
-          <FilterField widthClass="min-w-[320px] flex-1">
+          <FilterField widthClass="w-auto">
             <KeywordSearchField
               fieldOptions={staKeywordFieldOptions}
               defaultField="task-name"
@@ -922,15 +1789,28 @@ export function StaTaskPage() {
         </FilterBar>
       </Card>
 
-      <Card
-        title="STA任务列表"
-        extra={<Button variant="secondary" size="sm">导出装箱清单</Button>}
-      >
-        <div className="overflow-x-auto rounded-md border border-border">
+      <Card title="STA任务列表">
+        <ListToolbar
+          importExportActions={<Button variant="secondary" size="sm">导出装箱清单</Button>}
+        />
+        <ScrollableTablePanel
+          pagination={paginationProps}
+          tableFooter={
+            <div className="border-t border-border bg-white py-2 text-center text-small text-primary">
+              展开剩余30个商品
+            </div>
+          }
+        >
           <table className="w-full min-w-[1180px] border-collapse text-left text-small">
             <thead className="bg-bg-page text-text-muted">
               <tr>
-                <th className={`w-10 ${tableHeadCell}`}><input type="checkbox" /></th>
+                <th className={`w-10 ${tableHeadCell}`}>
+                  <TableSelectAllCheckbox
+                    checked={selection.allSelected}
+                    indeterminate={selection.partiallySelected}
+                    onChange={selection.toggleAll}
+                  />
+                </th>
                 <th className={tableHeadCell}>图片</th>
                 <th className={tableHeadCell}>MSKU</th>
                 <th className={tableHeadCell}>FNSKU</th>
@@ -943,14 +1823,23 @@ export function StaTaskPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border bg-white">
-              {staTaskRecords.map((record, index) => (
+              {pagedItems.map((record, index) => (
                 <Fragment key={record.id}>
                   <tr className={index === 0 ? "bg-primary-subtle/40" : "bg-bg-page/70"}>
-                    <td className="px-3 py-3"><input type="checkbox" /></td>
+                    <td className="px-3 py-3">
+                      <TableRowCheckbox
+                        checked={selection.isSelected(record.id)}
+                        onChange={() => selection.toggleRow(record.id)}
+                      />
+                    </td>
                     <td colSpan={7} className="px-3 py-3">
                       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                        <span className="font-medium text-primary">{record.staNo}（{record.updatedAt}）</span>
-                        <span>店铺：Shenghan店铺编码XXX</span>
+                        <ActionLinkButton onClick={() => onViewStaTask?.(record)}>
+                          <span className="font-medium">
+                            {record.staNo}（{record.updatedAt}）
+                          </span>
+                        </ActionLinkButton>
+                        <span>店铺：{record.store}</span>
                         <span>物流中心编号：SCK1/CHO1</span>
                       </div>
                       <div className="mt-1 text-text-muted">
@@ -965,7 +1854,15 @@ export function StaTaskPage() {
                         {record.currentStep}
                       </Badge>
                     </TableStatusCell>
-                    <TableOperationCell />
+                    <StaTaskOperationCell
+                      record={record}
+                      onView={onViewStaTask}
+                      onAction={(action, item) => {
+                        if (action === "edit") {
+                          onEditStaTask?.(item);
+                        }
+                      }}
+                    />
                   </tr>
                   <tr>
                     <td className="px-3 py-3" />
@@ -985,27 +1882,44 @@ export function StaTaskPage() {
               ))}
             </tbody>
           </table>
-          <div className="border-t border-border py-2 text-center text-small text-primary">展开剩余30个商品</div>
-          <PrototypePagination />
-        </div>
+        </ScrollableTablePanel>
       </Card>
     </div>
   );
 }
 
-export function FbaShipmentPage() {
+export function FbaShipmentPage({
+  records,
+  onEditFbaShipment,
+}: {
+  records: FbaShipmentRecord[];
+  onEditFbaShipment?: (record: FbaShipmentRecord) => void;
+}) {
+  const {
+    page,
+    pageSize,
+    totalCount,
+    totalPages,
+    pagedItems,
+    setPage,
+    setPageSize,
+  } = usePrototypePagination(records);
+  const rowIds = useMemo(() => pagedItems.map((record) => record.id), [pagedItems]);
+  const selection = useListSelection(rowIds);
+  const paginationProps: PrototypePaginationProps = {
+    currentPage: page,
+    totalPages,
+    totalCount,
+    pageSize,
+    onPageChange: setPage,
+    onPageSizeChange: setPageSize,
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader
         title="FBA货件"
         description="用于预览FBA货件查询、分仓装箱、货件状态和异常说明，当前页面仅展示原型交互。"
-        actions={
-          <>
-            <Button variant="secondary" size="sm">同步货件</Button>
-            <Button variant="secondary" size="sm">导出</Button>
-            <Button variant="primary" size="sm">创建货件</Button>
-          </>
-        }
       />
 
       <Card>
@@ -1046,9 +1960,8 @@ export function FbaShipmentPage() {
           <FilterTimeRangeField
             timeTypeOptions={fbaTimeTypeOptions}
             defaultTimeType="created-at"
-            widthClass="min-w-[400px]"
           />
-          <FilterField widthClass="min-w-[300px] flex-1">
+          <FilterField widthClass="w-auto">
             <KeywordSearchField
               fieldOptions={fbaKeywordFieldOptions}
               defaultField="sta-name"
@@ -1076,15 +1989,29 @@ export function FbaShipmentPage() {
         </FilterBar>
       </Card>
 
-      <Card
-        title="FBA货件列表"
-        extra={<Button variant="secondary" size="sm">导出箱唛清单</Button>}
-      >
-        <div className="overflow-x-auto rounded-md border border-border">
+      <Card title="FBA货件列表">
+        <ListToolbar
+          primaryActions={<Button variant="secondary" size="sm">同步货件</Button>}
+          importExportActions={<Button variant="secondary" size="sm">导出装箱清单</Button>}
+        />
+        <ScrollableTablePanel
+          pagination={paginationProps}
+          tableFooter={
+            <div className="border-t border-border bg-white py-2 text-center text-small text-primary">
+              展开剩余10个商品
+            </div>
+          }
+        >
           <table className="w-full min-w-[1480px] border-collapse text-left text-small">
             <thead className="bg-bg-page text-text-muted">
               <tr>
-                <th className={`w-10 ${tableHeadCell}`}><input type="checkbox" /></th>
+                <th className={`w-10 ${tableHeadCell}`}>
+                  <TableSelectAllCheckbox
+                    checked={selection.allSelected}
+                    indeterminate={selection.partiallySelected}
+                    onChange={selection.toggleAll}
+                  />
+                </th>
                 <th className={tableHeadCell}>图片</th>
                 <th className={tableHeadCell}>MSKU</th>
                 <th className={tableHeadCell}>FNSKU</th>
@@ -1102,19 +2029,24 @@ export function FbaShipmentPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border bg-white">
-              {fbaShipmentRecords.map((record, index) => (
+              {pagedItems.map((record, index) => (
                 <Fragment key={record.id}>
                   <tr className={index === 0 ? "bg-primary-subtle/40" : "bg-bg-page/70"}>
-                    <td className="px-3 py-3"><input type="checkbox" /></td>
+                    <td className="px-3 py-3">
+                      <TableRowCheckbox
+                        checked={selection.isSelected(record.id)}
+                        onChange={() => selection.toggleRow(record.id)}
+                      />
+                    </td>
                     <td colSpan={12} className="px-3 py-3">
                       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                         <span className="inline-flex items-center gap-2 font-medium text-primary">
                           {record.shipmentId}
                           {record.hasStaTask ? <StaTaskBadge /> : null}
                         </span>
-                        <span>STA任务：{record.hasStaTask ? `STA（${record.updatedAt}）` : "-"}</span>
-                        <span>物流中心编号：XLX7</span>
-                        <span>店铺：AMZ-US-028</span>
+                        <span>STA任务：{record.hasStaTask ? record.staNo : "-"}</span>
+                        <span>物流中心编号：{record.destinationFc}</span>
+                        <span>店铺：{record.store}</span>
                         <span>Reference Id：6KHVPYPS</span>
                       </div>
                       <div className="mt-1 text-text-muted">
@@ -1125,11 +2057,15 @@ export function FbaShipmentPage() {
                       <Badge tone={fbaShipmentStatusTone(record.shipmentStatus)} className="shrink-0">
                         {fbaShipmentStatusLabels[record.shipmentStatus]}
                       </Badge>
-                      <Badge tone={fbaCompletionStatusTone(record.completionStatus)} className="shrink-0">
-                        {record.completionStatus}
-                      </Badge>
                     </TableStatusCell>
-                    <TableOperationCell />
+                    <FbaShipmentOperationCell
+                      record={record}
+                      onAction={(action, item) => {
+                        if (action === "edit") {
+                          onEditFbaShipment?.(item);
+                        }
+                      }}
+                    />
                   </tr>
                   <tr>
                     <td className="px-3 py-3" />
@@ -1154,9 +2090,7 @@ export function FbaShipmentPage() {
               ))}
             </tbody>
           </table>
-          <div className="border-t border-border py-2 text-center text-small text-primary">展开剩余10个商品</div>
-          <PrototypePagination />
-        </div>
+        </ScrollableTablePanel>
       </Card>
     </div>
   );

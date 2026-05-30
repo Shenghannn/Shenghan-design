@@ -22,6 +22,7 @@ import {
   Search,
   ScrollText,
   ShoppingCart,
+  Truck,
   UserCircle2,
   Users,
   Warehouse,
@@ -32,6 +33,7 @@ import { SegmentedControl } from "./ui/segmented-control";
 
 type NavIconName =
   | "firstLeg"
+  | "shippingPlan"
   | "sta"
   | "fba"
   | "purchase"
@@ -76,6 +78,7 @@ const navigationTree: NavSection[] = [
         id: "first-leg-tasks",
         label: "头程任务",
         items: [
+          { id: "shipping-plan", label: "发货计划", icon: "shippingPlan" },
           { id: "sta-task", label: "STA任务", icon: "sta" },
           { id: "fba-shipment", label: "FBA货件", icon: "fba" },
         ],
@@ -147,6 +150,7 @@ const navigationTree: NavSection[] = [
 
 const iconMap: Record<NavIconName, LucideIcon> = {
   firstLeg: Plane,
+  shippingPlan: Truck,
   sta: ClipboardList,
   fba: PackageCheck,
   purchase: ShoppingCart,

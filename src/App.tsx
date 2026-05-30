@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDownToLine, Bell, Building2, ChevronDown, CircleAlert, ClipboardList, Clock3, Download, House, LayoutGrid, PackageCheck, Palette, Plus, ScrollText, Settings2, Users, Warehouse } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, Bell, Building2, ChevronDown, CircleAlert, ClipboardList, Clock3, Download, House, LayoutGrid, PackageCheck, Palette, Plus, ScrollText, Settings2, Truck, Users, Warehouse } from "lucide-react";
 import { AppShell } from "./components/app-shell";
 import { AttachmentPanel, type AttachmentItem } from "./components/ui/attachment-panel";
 import { Banner } from "./components/ui/banner";
@@ -59,7 +59,24 @@ import {
 import { DesignSystemPage } from "./pages/design-system-page";
 import { InventoryFlowQueryPage } from "./pages/inventory-flow-query";
 import { InventoryQueryPage } from "./pages/inventory-query";
-import { FbaShipmentPage, StaTaskPage } from "./pages/first-leg-prototypes";
+import {
+  CreateStaTaskPage,
+  type CreateStaTaskSource,
+  type EditStaTaskContext,
+  type StaDraftPayload,
+  type StaPlanCreatedPayload,
+  type StaPlacementConfirmPayload,
+} from "./pages/create-sta-task";
+import {
+  FbaShipmentPage,
+  initialFbaShipmentRecords,
+  initialStaTaskRecords,
+  ShippingPlanPage,
+  StaTaskPage,
+  type FbaShipmentRecord,
+  type StaTaskRecord,
+} from "./pages/first-leg-prototypes";
+import { StaTaskDetailPage } from "./pages/sta-task-detail";
 import { ExportTaskCenterPage } from "./pages/export-task-center";
 import { MessageCenterPage } from "./pages/message-center";
 import { ShellCapabilitiesPage } from "./pages/shell-capabilities-page";
@@ -107,6 +124,10 @@ import {
 
 type WorkspaceTabKey =
   | "home"
+  | "shipping-plan"
+  | "create-sta-task"
+  | "edit-sta-task"
+  | "sta-task-detail"
   | "sta-task"
   | "fba-shipment"
   | "design-system"
@@ -482,6 +503,11 @@ export default function App() {
   const [currentTenantId, setCurrentTenantId] = useState(tenantOptions[0].id);
   const [activeTab, setActiveTab] = useState<WorkspaceTabKey>("home");
   const [openTabs, setOpenTabs] = useState<WorkspaceTabKey[]>(["home"]);
+  const [createStaTaskSource, setCreateStaTaskSource] = useState<CreateStaTaskSource | null>(null);
+  const [editStaTaskContext, setEditStaTaskContext] = useState<EditStaTaskContext | null>(null);
+  const [staTaskDetailId, setStaTaskDetailId] = useState<string | null>(null);
+  const [staTaskRecords, setStaTaskRecords] = useState<StaTaskRecord[]>(initialStaTaskRecords);
+  const [fbaShipmentRecords, setFbaShipmentRecords] = useState<FbaShipmentRecord[]>(initialFbaShipmentRecords);
   const [listScenario, setListScenario] = useState<ListScenario>("normal");
   const [editScenario, setEditScenario] = useState<EditScenario>("normal");
   const [detailScenario, setDetailScenario] = useState<DetailScenario>("normal");
@@ -1006,6 +1032,197 @@ export default function App() {
     showPendingAlert("关联详情");
   }
 
+  function openCreateStaTask(source: CreateStaTaskSource) {
+    setCreateStaTaskSource(source);
+    openWorkspaceTab("create-sta-task");
+  }
+
+  function buildEditStaTaskContext(record: StaTaskRecord): EditStaTaskContext {
+    return {
+      staNo: record.staNo,
+      store: record.store,
+      status: record.status,
+      currentStep: record.currentStep,
+      confirmedShipments: record.confirmedShipments,
+      planCreated: record.planCreated,
+      taskName: record.taskName,
+      shippingAddress: record.shippingAddress,
+      remark: record.remark,
+      products: record.products,
+    };
+  }
+
+  function buildStaTaskRecordFromForm(
+    payload: StaDraftPayload,
+    overrides: Partial<StaTaskRecord>,
+  ): StaTaskRecord {
+    return {
+      id: `sta-${Date.now()}`,
+      staNo: payload.staNo,
+      taskName: payload.taskName || payload.staNo,
+      shipmentNo: "-",
+      skuCount: payload.skuCount,
+      totalQty: payload.totalQty,
+      marketplace: payload.store.includes("CA") ? "CA" : "US",
+      store: payload.store,
+      sourceWarehouse: payload.shippingAddress.split("｜")[0] || payload.shippingAddress.split(",")[0] || "待维护",
+      destination: "-",
+      status: "草稿",
+      currentStep: "选择发货商品",
+      updatedAt: formatTaskTimestamp(),
+      shippingAddress: payload.shippingAddress,
+      remark: payload.remark,
+      products: payload.products,
+      ...overrides,
+    };
+  }
+
+  function openEditStaTask(record: StaTaskRecord) {
+    setEditStaTaskContext(buildEditStaTaskContext(record));
+    openWorkspaceTab("edit-sta-task");
+  }
+
+  function openStaTaskDetail(record: StaTaskRecord) {
+    setStaTaskDetailId(record.id);
+    openWorkspaceTab("sta-task-detail");
+  }
+
+  function openEditFbaShipment(record: FbaShipmentRecord) {
+    const relatedStaTask = staTaskRecords.find((item) => item.staNo === record.staNo);
+    if (relatedStaTask) {
+      setEditStaTaskContext({
+        ...buildEditStaTaskContext(relatedStaTask),
+        currentStep: record.currentStep,
+        activeShipmentId: record.shipmentId,
+      });
+    } else {
+      setEditStaTaskContext({
+        staNo: record.staNo,
+        store: record.store,
+        status: "进行中",
+        currentStep: record.currentStep,
+        activeShipmentId: record.shipmentId,
+      });
+    }
+    openWorkspaceTab("edit-sta-task");
+  }
+
+  function handleSaveStaDraft(payload: StaDraftPayload) {
+    const updatedAt = formatTaskTimestamp();
+    setStaTaskRecords((current) => {
+      const existingIndex = current.findIndex((item) => item.staNo === payload.staNo);
+      const nextRecord = buildStaTaskRecordFromForm(payload, {
+        id: existingIndex >= 0 ? current[existingIndex].id : `sta-${Date.now()}`,
+        updatedAt,
+      });
+
+      if (existingIndex >= 0) {
+        return current.map((item, index) => (index === existingIndex ? { ...item, ...nextRecord } : item));
+      }
+
+      return [nextRecord, ...current];
+    });
+
+    showFloatingAlert({
+      tone: "success",
+      title: "草稿保存成功",
+      description: `STA任务 ${payload.staNo} 已保存为草稿，可在 STA 任务列表中继续编辑。`,
+    });
+    openWorkspaceTab("sta-task");
+  }
+
+  function handleStaPlanCreated(payload: StaPlanCreatedPayload) {
+    const updatedAt = payload.createdAt ?? formatTaskTimestamp();
+    setStaTaskRecords((current) => {
+      const existingIndex = current.findIndex((item) => item.staNo === payload.staNo);
+      const nextRecord = buildStaTaskRecordFromForm(payload, {
+        id: existingIndex >= 0 ? current[existingIndex].id : `sta-${Date.now()}`,
+        status: "进行中",
+        currentStep: "选择发货商品",
+        planCreated: true,
+        inboundPlanId: payload.inboundPlanId,
+        placementFee: payload.placementFee ?? "USD0",
+        creator: payload.creator ?? "张三",
+        createdAt: updatedAt,
+        updatedAt,
+      });
+
+      if (existingIndex >= 0) {
+        return current.map((item, index) => (index === existingIndex ? { ...item, ...nextRecord } : item));
+      }
+
+      return [nextRecord, ...current];
+    });
+  }
+
+  function handleConfirmStaPlacement(payload: StaPlacementConfirmPayload) {
+    const updatedAt = formatTaskTimestamp();
+    const primaryShipment = payload.shipments[0];
+
+    setStaTaskRecords((current) => {
+      const existingIndex = current.findIndex((item) => item.staNo === payload.staNo);
+      const nextRecord: StaTaskRecord = {
+        id: existingIndex >= 0 ? current[existingIndex].id : `sta-${Date.now()}`,
+        staNo: payload.staNo,
+        shipmentNo: primaryShipment?.shipmentId ?? "-",
+        skuCount: payload.skuCount,
+        totalQty: payload.totalQty,
+        marketplace: payload.store.includes("CA") ? "CA" : "US",
+        store: payload.store,
+        sourceWarehouse: "待维护",
+        destination: primaryShipment?.fcCode ?? "-",
+        status: "进行中",
+        currentStep: "商品装箱",
+        updatedAt,
+        confirmedShipments: payload.shipments,
+      };
+
+      if (existingIndex >= 0) {
+        return current.map((item, index) => (index === existingIndex ? { ...item, ...nextRecord } : item));
+      }
+
+      return [nextRecord, ...current];
+    });
+
+    const newFbaRecords: FbaShipmentRecord[] = payload.shipments.map((shipment, index) => ({
+      id: `fba-${Date.now()}-${index}`,
+      shipmentId: shipment.shipmentId,
+      staNo: payload.staNo,
+      store: payload.store,
+      planNo: payload.sourcePlanNo?.replace(/^SP/, "PLN-") ?? `PLN-${payload.staNo.replace(/^STA-/, "")}`,
+      mskuCount: payload.skuCount,
+      totalQty: payload.totalQty,
+      destinationFc: shipment.fcCode,
+      boxMode: "先分仓再装箱",
+      shipmentStatus: "WORKING",
+      completionStatus: "进行中",
+      currentStep: "商品装箱",
+      hasStaTask: true,
+      updatedAt,
+    }));
+
+    setFbaShipmentRecords((current) => [...newFbaRecords, ...current]);
+
+    showFloatingAlert({
+      tone: "success",
+      title: "申报成功",
+      description: `已确认分仓方案并创建 ${payload.shipments.length} 个 FBA 货件，进入商品装箱步骤。`,
+    });
+  }
+
+  function handleStaValidationError(message: string) {
+    showFloatingAlert({
+      tone: "error",
+      title: "请完善必填项",
+      description: message,
+    });
+  }
+
+  const staTaskDetailRecord = useMemo(
+    () => staTaskRecords.find((record) => record.id === staTaskDetailId) ?? null,
+    [staTaskDetailId, staTaskRecords],
+  );
+
   const tabs = useMemo(() => {
     const definitions = {
       home: { key: "home", label: "首页", closable: false, icon: House },
@@ -1014,6 +1231,26 @@ export default function App() {
       "system-status": { key: "system-status", label: "系统状态", closable: true, icon: AlertTriangle },
       "export-task-center": { key: "export-task-center", label: "导出任务中心", closable: true, icon: Download },
       "message-center": { key: "message-center", label: "消息中心", closable: true, icon: Bell },
+      "shipping-plan": { key: "shipping-plan", label: "发货计划", closable: true, icon: Truck },
+      "create-sta-task": { key: "create-sta-task", label: "创建STA", closable: true, icon: ClipboardList },
+      "edit-sta-task": {
+        key: "edit-sta-task",
+        label: editStaTaskContext
+          ? editStaTaskContext.planCreated
+            ? `编辑${editStaTaskContext.staNo}`
+            : "创建STA任务"
+          : "编辑STA",
+        closable: true,
+        icon: ClipboardList,
+      },
+      "sta-task-detail": {
+        key: "sta-task-detail",
+        label: staTaskDetailRecord
+          ? `详情${staTaskDetailRecord.taskName ?? staTaskDetailRecord.staNo}`
+          : "STA详情",
+        closable: true,
+        icon: ClipboardList,
+      },
       "sta-task": { key: "sta-task", label: "STA任务", closable: true, icon: ClipboardList },
       "fba-shipment": { key: "fba-shipment", label: "FBA货件", closable: true, icon: PackageCheck },
       list: { key: "list", label: "采购订单列表", closable: true },
@@ -1033,7 +1270,7 @@ export default function App() {
     } as const;
 
     return openTabs.map((key) => definitions[key]);
-  }, [openTabs]);
+  }, [openTabs, editStaTaskContext, staTaskDetailRecord]);
 
   function openWorkspaceTab(tab: WorkspaceTabKey) {
     setOpenTabs((current) => (current.includes(tab) ? current : [...current, tab]));
@@ -1445,7 +1682,9 @@ export default function App() {
         ? "supplier"
         : activeTab.startsWith("customer-")
           ? "customer"
-          : activeTab === "sta-task"
+          : activeTab === "create-sta-task" || activeTab === "shipping-plan"
+            ? "shipping-plan"
+          : activeTab === "edit-sta-task" || activeTab === "sta-task-detail" || activeTab === "sta-task"
             ? "sta-task"
           : activeTab === "fba-shipment"
             ? "fba-shipment"
@@ -1479,6 +1718,9 @@ export default function App() {
               : undefined
       }
       onNavItemSelect={(key) => {
+        if (key === "shipping-plan") {
+          openWorkspaceTab("shipping-plan");
+        }
         if (key === "sta-task") {
           openWorkspaceTab("sta-task");
         }
@@ -1605,8 +1847,53 @@ export default function App() {
           onOpenSettings={() => showPendingAlert("消息设置")}
         />
       )}
-      {activeTab === "sta-task" && <StaTaskPage />}
-      {activeTab === "fba-shipment" && <FbaShipmentPage />}
+      {activeTab === "shipping-plan" && (
+        <ShippingPlanPage
+          onCreateStaTask={(record) =>
+            openCreateStaTask({
+              planId: record.id,
+              planNo: record.planNo,
+              store: record.store,
+            })
+          }
+        />
+      )}
+      {activeTab === "create-sta-task" && createStaTaskSource ? (
+        <CreateStaTaskPage
+          source={createStaTaskSource}
+          onCancel={() => openWorkspaceTab("shipping-plan")}
+          onSaveDraft={handleSaveStaDraft}
+          onPlanCreated={handleStaPlanCreated}
+          onConfirmPlacement={handleConfirmStaPlacement}
+          onValidationError={handleStaValidationError}
+        />
+      ) : null}
+      {activeTab === "edit-sta-task" && editStaTaskContext ? (
+        <CreateStaTaskPage
+          editContext={editStaTaskContext}
+          onCancel={() => openWorkspaceTab("sta-task")}
+          onSaveDraft={handleSaveStaDraft}
+          onPlanCreated={handleStaPlanCreated}
+          onConfirmPlacement={handleConfirmStaPlacement}
+          onValidationError={handleStaValidationError}
+        />
+      ) : null}
+      {activeTab === "sta-task-detail" && staTaskDetailRecord ? (
+        <StaTaskDetailPage
+          record={staTaskDetailRecord}
+          onEdit={() => openEditStaTask(staTaskDetailRecord)}
+        />
+      ) : null}
+      {activeTab === "sta-task" && (
+        <StaTaskPage
+          records={staTaskRecords}
+          onEditStaTask={openEditStaTask}
+          onViewStaTask={openStaTaskDetail}
+        />
+      )}
+      {activeTab === "fba-shipment" && (
+        <FbaShipmentPage records={fbaShipmentRecords} onEditFbaShipment={openEditFbaShipment} />
+      )}
       {activeTab === "inventory-query" && (
         <InventoryQueryPage
           onCreateExportTask={({ recordCount }) =>
