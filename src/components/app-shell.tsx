@@ -14,9 +14,11 @@ import {
   Languages,
   LogOut,
   House,
+  PackageCheck,
   PanelLeftClose,
   PanelLeftOpen,
   Palette,
+  Plane,
   Search,
   ScrollText,
   ShoppingCart,
@@ -29,6 +31,9 @@ import {
 import { SegmentedControl } from "./ui/segmented-control";
 
 type NavIconName =
+  | "firstLeg"
+  | "sta"
+  | "fba"
   | "purchase"
   | "execute"
   | "master"
@@ -62,6 +67,21 @@ type NavSection = {
 };
 
 const navigationTree: NavSection[] = [
+  {
+    id: "first-leg",
+    label: "头程物流",
+    icon: "firstLeg",
+    groups: [
+      {
+        id: "first-leg-tasks",
+        label: "头程任务",
+        items: [
+          { id: "sta-task", label: "STA任务", icon: "sta" },
+          { id: "fba-shipment", label: "FBA货件", icon: "fba" },
+        ],
+      },
+    ],
+  },
   {
     id: "collaboration",
     label: "采购协同",
@@ -126,6 +146,9 @@ const navigationTree: NavSection[] = [
 ];
 
 const iconMap: Record<NavIconName, LucideIcon> = {
+  firstLeg: Plane,
+  sta: ClipboardList,
+  fba: PackageCheck,
   purchase: ShoppingCart,
   execute: Workflow,
   master: Database,
@@ -660,7 +683,7 @@ export function AppShell({
             </div>
           ) : (
             <div className="truncate">
-              <div className="text-section-title font-section-title text-text-primary">维他命B端后台模板</div>
+              <div className="text-section-title font-section-title text-text-primary">Shenghan 原型展示平台</div>
             </div>
           )}
         </div>

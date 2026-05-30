@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDownToLine, Bell, Building2, ChevronDown, CircleAlert, ClipboardList, Clock3, Download, House, LayoutGrid, Palette, Plus, ScrollText, Settings2, Users, Warehouse } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, Bell, Building2, ChevronDown, CircleAlert, ClipboardList, Clock3, Download, House, LayoutGrid, PackageCheck, Palette, Plus, ScrollText, Settings2, Users, Warehouse } from "lucide-react";
 import { AppShell } from "./components/app-shell";
 import { AttachmentPanel, type AttachmentItem } from "./components/ui/attachment-panel";
 import { Banner } from "./components/ui/banner";
@@ -59,6 +59,7 @@ import {
 import { DesignSystemPage } from "./pages/design-system-page";
 import { InventoryFlowQueryPage } from "./pages/inventory-flow-query";
 import { InventoryQueryPage } from "./pages/inventory-query";
+import { FbaShipmentPage, StaTaskPage } from "./pages/first-leg-prototypes";
 import { ExportTaskCenterPage } from "./pages/export-task-center";
 import { MessageCenterPage } from "./pages/message-center";
 import { ShellCapabilitiesPage } from "./pages/shell-capabilities-page";
@@ -106,6 +107,8 @@ import {
 
 type WorkspaceTabKey =
   | "home"
+  | "sta-task"
+  | "fba-shipment"
   | "design-system"
   | "shell-capabilities"
   | "system-status"
@@ -187,7 +190,7 @@ const themeStorageKey = "prototype-app-theme";
 const tenantOptions: TenantOption[] = [
   {
     id: "tenant-vitamin-retail",
-    name: "维他命零售集团",
+    name: "Shenghan",
     code: "TENANT-001",
     description: "华东直营与电商业务",
   },
@@ -1011,6 +1014,8 @@ export default function App() {
       "system-status": { key: "system-status", label: "系统状态", closable: true, icon: AlertTriangle },
       "export-task-center": { key: "export-task-center", label: "导出任务中心", closable: true, icon: Download },
       "message-center": { key: "message-center", label: "消息中心", closable: true, icon: Bell },
+      "sta-task": { key: "sta-task", label: "STA任务", closable: true, icon: ClipboardList },
+      "fba-shipment": { key: "fba-shipment", label: "FBA货件", closable: true, icon: PackageCheck },
       list: { key: "list", label: "采购订单列表", closable: true },
       create: { key: "create", label: "新建采购订单", closable: true },
       edit: { key: "edit", label: "编辑采购订单", closable: true },
@@ -1440,6 +1445,10 @@ export default function App() {
         ? "supplier"
         : activeTab.startsWith("customer-")
           ? "customer"
+          : activeTab === "sta-task"
+            ? "sta-task"
+          : activeTab === "fba-shipment"
+            ? "fba-shipment"
           : activeTab === "inventory-query"
             ? "inventory-query"
           : activeTab === "inventory-flow-query"
@@ -1470,6 +1479,12 @@ export default function App() {
               : undefined
       }
       onNavItemSelect={(key) => {
+        if (key === "sta-task") {
+          openWorkspaceTab("sta-task");
+        }
+        if (key === "fba-shipment") {
+          openWorkspaceTab("fba-shipment");
+        }
         if (key === "purchase-order") {
           openWorkspaceTab("list");
         }
@@ -1590,6 +1605,8 @@ export default function App() {
           onOpenSettings={() => showPendingAlert("消息设置")}
         />
       )}
+      {activeTab === "sta-task" && <StaTaskPage />}
+      {activeTab === "fba-shipment" && <FbaShipmentPage />}
       {activeTab === "inventory-query" && (
         <InventoryQueryPage
           onCreateExportTask={({ recordCount }) =>

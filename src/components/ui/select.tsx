@@ -19,6 +19,7 @@ type SelectProps = {
   disabled?: boolean;
   menuDensity?: "default" | "compact";
   menuPlacement?: "auto" | "top" | "bottom";
+  menuMinWidth?: number;
   onValueChange?: (value: string) => void;
 };
 
@@ -31,6 +32,7 @@ export function Select({
   disabled = false,
   menuDensity = "default",
   menuPlacement = "auto",
+  menuMinWidth,
   onValueChange,
 }: SelectProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -104,7 +106,7 @@ export function Select({
         (resolvedPlacement === "bottom" ? spaceBelow : spaceAbove) - menuOffset,
       );
       const menuHeight = Math.min(estimatedMenuHeight, availableHeight);
-      const width = rect.width;
+      const width = Math.max(rect.width, menuMinWidth ?? 0);
       const maxLeft = Math.max(viewportPadding, window.innerWidth - viewportPadding - width);
       const left = Math.min(Math.max(rect.left, viewportPadding), maxLeft);
       const top =
@@ -134,7 +136,7 @@ export function Select({
       window.removeEventListener("resize", updateMenuPosition);
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [menuPlacement, open, options.length]);
+  }, [menuMinWidth, menuPlacement, open, options.length]);
 
   function handleSelect(nextValue: string) {
     if (!isControlled) {
@@ -165,8 +167,8 @@ export function Select({
       >
         <span
           className={cn(
-            "block min-w-0 flex-1 truncate whitespace-nowrap",
-            selectedOption ? "text-text-primary" : "text-text-placeholder",
+            "block min-w-0 flex-1 whitespace-nowrap",
+            selectedOption ? "truncate text-text-primary" : "text-text-placeholder",
           )}
           title={selectedOption?.label ?? placeholder}
         >

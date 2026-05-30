@@ -484,6 +484,6 @@ export const designSystemFormatSamples: DesignSystemFormatSample[] = [
 
 export const designSystemTableRows: DesignSystemTableRow[] = [
   { orderNo: "PO202603220001", supplier: "华东供应商A", amount: "128,000.00", eta: "2026-03-24", status: "pending" },
-  { orderNo: "PO202603220018", supplier: "维他命物料中心", amount: "86,500.00", eta: "2026-03-25", status: "processing" },
+  { orderNo: "PO202603220018", supplier: "Shenghan物料中心", amount: "86,500.00", eta: "2026-03-25", status: "processing" },
   { orderNo: "PO202603220031", supplier: "区域采购服务商", amount: "42,300.00", eta: "2026-03-27", status: "success" },
 ];

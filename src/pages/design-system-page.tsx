@@ -161,7 +161,7 @@ export function DesignSystemPage() {
           <div>
             <h1 className="page-title">Design System</h1>
             <div className="mt-2 text-small text-text-muted">
-              维他命B端后台模板的视觉规范总览，只展示稳定可复用的UI基线和控件约束。
+              Shenghan 原型展示平台的视觉规范总览，只展示稳定可复用的UI基线和控件约束。
             </div>
           </div>
           <Badge tone="processing">V1.1</Badge>
@@ -493,7 +493,7 @@ export function DesignSystemPage() {
                 <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
                   <div className="rounded-md border border-border bg-white">
                     <div className="flex h-tabs items-center border-b border-border px-section">
-                      <span className="text-section-title font-section-title text-text-primary">维他命B端后台模板</span>
+                      <span className="text-section-title font-section-title text-text-primary">Shenghan 原型展示平台</span>
                     </div>
                     <div className="space-y-4 p-3">
                       <div className="space-y-2">
