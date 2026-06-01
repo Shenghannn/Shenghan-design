@@ -66,6 +66,7 @@ import {
   type StaDraftPayload,
   type StaPlanCreatedPayload,
   type StaPlacementConfirmPayload,
+  type StaWizardStepName,
 } from "./pages/create-sta-task";
 import {
   FbaShipmentPage,
@@ -121,6 +122,14 @@ import {
   SupplierLifecycleModal,
   SupplierListPage,
 } from "./pages/supplier-master";
+
+const staWizardStepOrder: StaWizardStepName[] = [
+  "选择发货商品",
+  "商品装箱",
+  "配送服务",
+  "箱子标签",
+  "货件追踪",
+];
 
 type WorkspaceTabKey =
   | "home"
@@ -506,6 +515,8 @@ export default function App() {
   const [createStaTaskSource, setCreateStaTaskSource] = useState<CreateStaTaskSource | null>(null);
   const [editStaTaskContext, setEditStaTaskContext] = useState<EditStaTaskContext | null>(null);
   const [staTaskDetailId, setStaTaskDetailId] = useState<string | null>(null);
+  const [staTaskDetailStep, setStaTaskDetailStep] = useState<StaWizardStepName | null>(null);
+  const [staTaskDetailReturnToEdit, setStaTaskDetailReturnToEdit] = useState(false);
   const [staTaskRecords, setStaTaskRecords] = useState<StaTaskRecord[]>(initialStaTaskRecords);
   const [fbaShipmentRecords, setFbaShipmentRecords] = useState<FbaShipmentRecord[]>(initialFbaShipmentRecords);
   const [listScenario, setListScenario] = useState<ListScenario>("normal");
@@ -1082,8 +1093,53 @@ export default function App() {
     openWorkspaceTab("edit-sta-task");
   }
 
-  function openStaTaskDetail(record: StaTaskRecord) {
+  function openStaTaskDetail(record: StaTaskRecord, detailStep?: StaWizardStepName) {
     setStaTaskDetailId(record.id);
+    setStaTaskDetailStep(detailStep ?? null);
+    setStaTaskDetailReturnToEdit(false);
+    openWorkspaceTab("sta-task-detail");
+  }
+
+  function openStaTaskPreviousStepDetail(staNo: string, previousStep: StaWizardStepName) {
+    const record = staTaskRecords.find((item) => item.staNo === staNo);
+    if (!record) {
+      showPendingAlert("上一步详情");
+      return;
+    }
+
+    setStaTaskDetailId(record.id);
+    setStaTaskDetailStep(previousStep);
+    setStaTaskDetailReturnToEdit(true);
+    openWorkspaceTab("sta-task-detail");
+  }
+
+  function openNextStaTaskDetail(record: StaTaskRecord, activeStep: StaWizardStepName) {
+    if (staTaskDetailReturnToEdit) {
+      openEditStaTask(record);
+      setStaTaskDetailReturnToEdit(false);
+      return;
+    }
+
+    const activeIndex = staWizardStepOrder.indexOf(activeStep);
+    const nextStep = staWizardStepOrder[activeIndex + 1];
+    if (!nextStep) {
+      return;
+    }
+
+    setStaTaskDetailId(record.id);
+    setStaTaskDetailStep(nextStep);
+    openWorkspaceTab("sta-task-detail");
+  }
+
+  function openPreviousStaTaskDetail(record: StaTaskRecord, activeStep: StaWizardStepName) {
+    const activeIndex = staWizardStepOrder.indexOf(activeStep);
+    const previousStep = staWizardStepOrder[activeIndex - 1];
+    if (!previousStep) {
+      return;
+    }
+
+    setStaTaskDetailId(record.id);
+    setStaTaskDetailStep(previousStep);
     openWorkspaceTab("sta-task-detail");
   }
 
@@ -1207,6 +1263,86 @@ export default function App() {
       tone: "success",
       title: "申报成功",
       description: `已确认分仓方案并创建 ${payload.shipments.length} 个 FBA 货件，进入商品装箱步骤。`,
+    });
+  }
+
+  function handleSubmitStaPacking(staNo: string) {
+    const updatedAt = formatTaskTimestamp();
+    setStaTaskRecords((current) =>
+      current.map((item) =>
+        item.staNo === staNo
+          ? {
+              ...item,
+              currentStep: "配送服务",
+              packingStatus: "已完成",
+              updatedAt,
+            }
+          : item,
+      ),
+    );
+    setFbaShipmentRecords((current) =>
+      current.map((item) =>
+        item.staNo === staNo
+          ? {
+              ...item,
+              currentStep: "配送服务",
+              updatedAt,
+            }
+          : item,
+      ),
+    );
+    setEditStaTaskContext((current) =>
+      current?.staNo === staNo
+        ? {
+            ...current,
+            currentStep: "配送服务",
+          }
+        : current,
+    );
+    showFloatingAlert({
+      tone: "success",
+      title: "装箱提交成功",
+      description: "装箱信息已提交至 Amazon，当前 STA 任务进入配送服务步骤。",
+    });
+  }
+
+  function handleSubmitStaDelivery(staNo: string) {
+    const updatedAt = formatTaskTimestamp();
+    setStaTaskRecords((current) =>
+      current.map((item) =>
+        item.staNo === staNo
+          ? {
+              ...item,
+              currentStep: "箱子标签",
+              deliveryStatus: "已完成",
+              updatedAt,
+            }
+          : item,
+      ),
+    );
+    setFbaShipmentRecords((current) =>
+      current.map((item) =>
+        item.staNo === staNo
+          ? {
+              ...item,
+              currentStep: "箱子标签",
+              updatedAt,
+            }
+          : item,
+      ),
+    );
+    setEditStaTaskContext((current) =>
+      current?.staNo === staNo
+        ? {
+            ...current,
+            currentStep: "箱子标签",
+          }
+        : current,
+    );
+    showFloatingAlert({
+      tone: "success",
+      title: "配送服务提交成功",
+      description: "送达时段与承运服务已确认，当前 STA 任务进入箱子标签步骤。",
     });
   }
 
@@ -1865,6 +2001,9 @@ export default function App() {
           onSaveDraft={handleSaveStaDraft}
           onPlanCreated={handleStaPlanCreated}
           onConfirmPlacement={handleConfirmStaPlacement}
+          onSubmitPacking={handleSubmitStaPacking}
+          onSubmitDelivery={handleSubmitStaDelivery}
+          onOpenPreviousStepDetail={openStaTaskPreviousStepDetail}
           onValidationError={handleStaValidationError}
         />
       ) : null}
@@ -1875,13 +2014,19 @@ export default function App() {
           onSaveDraft={handleSaveStaDraft}
           onPlanCreated={handleStaPlanCreated}
           onConfirmPlacement={handleConfirmStaPlacement}
+          onSubmitPacking={handleSubmitStaPacking}
+          onSubmitDelivery={handleSubmitStaDelivery}
+          onOpenPreviousStepDetail={openStaTaskPreviousStepDetail}
           onValidationError={handleStaValidationError}
         />
       ) : null}
       {activeTab === "sta-task-detail" && staTaskDetailRecord ? (
         <StaTaskDetailPage
           record={staTaskDetailRecord}
+          detailStep={staTaskDetailStep ?? undefined}
           onEdit={() => openEditStaTask(staTaskDetailRecord)}
+          onPreviousStep={openPreviousStaTaskDetail}
+          onNextStep={openNextStaTaskDetail}
         />
       ) : null}
       {activeTab === "sta-task" && (

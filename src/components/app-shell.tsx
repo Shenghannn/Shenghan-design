@@ -71,12 +71,12 @@ type NavSection = {
 const navigationTree: NavSection[] = [
   {
     id: "first-leg",
-    label: "头程物流",
+    label: "物流模块",
     icon: "firstLeg",
     groups: [
       {
         id: "first-leg-tasks",
-        label: "头程任务",
+        label: "物流订单",
         items: [
           { id: "shipping-plan", label: "发货计划", icon: "shippingPlan" },
           { id: "sta-task", label: "STA任务", icon: "sta" },

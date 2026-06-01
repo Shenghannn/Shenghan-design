@@ -12,6 +12,8 @@ import { Textarea } from "../components/ui/textarea";
 type StaTaskStatus = "草稿" | "进行中" | "已发货" | "已取消" | "异常";
 export type StaWizardStep = "选择发货商品" | "商品装箱" | "配送服务" | "箱子标签" | "货件追踪";
 type StaCurrentStep = StaWizardStep;
+export type StaPackingStatus = "进行中" | "已完成";
+export type StaDeliveryStatus = "进行中" | "已完成";
 
 export type StaTaskProductLine = {
   id: string;
@@ -55,6 +57,8 @@ export type StaTaskRecord = {
   createdAt?: string;
   placementFee?: string;
   planCreated?: boolean;
+  packingStatus?: StaPackingStatus;
+  deliveryStatus?: StaDeliveryStatus;
   products?: StaTaskProductLine[];
   confirmedShipments?: StaConfirmedShipment[];
 };
@@ -321,6 +325,9 @@ export const initialStaTaskRecords: StaTaskRecord[] = [
     status: "进行中",
     currentStep: "商品装箱",
     updatedAt: "2026-03-22 09:18",
+    taskName: "STA (03/22/2026 09:18 AM)",
+    packingStatus: "进行中",
+    products: mockStaDetailProducts,
     confirmedShipments: [
       {
         shipmentId: "FBA19CHTHLKB",
@@ -333,6 +340,50 @@ export const initialStaTaskRecords: StaTaskRecord[] = [
         fcCode: "LAN2",
         deliveryAddress: "配送地址2XXXXX",
         shipmentName: "FBA STA (22/03/2026 09:18)-LAN2",
+      },
+    ],
+  },
+  {
+    id: "sta-005",
+    staNo: "STA-20260428-001",
+    taskName: "STA (04/28/2026 02:56 PM)",
+    shipmentNo: "FBA15LQGJ5LF",
+    skuCount: 3,
+    totalQty: 19,
+    marketplace: "CA",
+    store: "AMZ-CA-05店",
+    sourceWarehouse: "义乌发货仓",
+    destination: "LBE1",
+    status: "进行中",
+    currentStep: "商品装箱",
+    updatedAt: "2026-04-28 14:56",
+    planCreated: true,
+    packingStatus: "已完成",
+    products: mockStaDetailProducts,
+    confirmedShipments: [
+      {
+        shipmentId: "FBA15LQGJ5LF",
+        fcCode: "LBE1",
+        deliveryAddress: "配送地址1XXXXX",
+        shipmentName: "FBA STA (28/04/2026 05:56)-HAJ1",
+      },
+      {
+        shipmentId: "FBA15LQGJ6LF",
+        fcCode: "LB1",
+        deliveryAddress: "配送地址2XXXXX",
+        shipmentName: "FBA STA (28/04/2026 05:56)-LB1",
+      },
+      {
+        shipmentId: "FBA15LQGJ7LF",
+        fcCode: "TMBB",
+        deliveryAddress: "配送地址3XXXXX",
+        shipmentName: "FBA STA (28/04/2026 05:56)-TMBB",
+      },
+      {
+        shipmentId: "FBA15LQGJ8LF",
+        fcCode: "LAN2",
+        deliveryAddress: "配送地址4XXXXX",
+        shipmentName: "FBA STA (28/04/2026 05:56)-LAN2",
       },
     ],
   },
@@ -373,6 +424,57 @@ export const initialStaTaskRecords: StaTaskRecord[] = [
     status: "异常",
     currentStep: "配送服务",
     updatedAt: "2026-03-21 18:36",
+    taskName: "STA (03/21/2026 06:36 PM)",
+    packingStatus: "已完成",
+    deliveryStatus: "进行中",
+    products: mockStaDetailProducts,
+    confirmedShipments: [
+      {
+        shipmentId: "FBA19C34CPYD",
+        fcCode: "YYZ7",
+        deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+        shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+      },
+      {
+        shipmentId: "FBA19C34CPYE",
+        fcCode: "YYZ7",
+        deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+        shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+      },
+    ],
+  },
+  {
+    id: "sta-006",
+    staNo: "STA-20260428-002",
+    taskName: "STA (04/28/2026 02:56 PM)",
+    shipmentNo: "FBA19C34CPYD",
+    skuCount: 6,
+    totalQty: 60,
+    marketplace: "CA",
+    store: "AMZ-CA-05店",
+    sourceWarehouse: "义乌发货仓",
+    destination: "YYZ7",
+    status: "进行中",
+    currentStep: "箱子标签",
+    updatedAt: "2026-04-28 15:20",
+    planCreated: true,
+    packingStatus: "已完成",
+    deliveryStatus: "已完成",
+    products: mockStaDetailProducts,
+    confirmedShipments: [
+      {
+        shipmentId: "FBA19C34CPYD",
+        fcCode: "YYZ7",
+        deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+        shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+      },
+      {
+        shipmentId: "FBA19C34CPYE",
+        fcCode: "YYZ7",
+        deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+        shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+      },
+    ],
   },
 ];
 
@@ -1836,7 +1938,7 @@ export function StaTaskPage({
                       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                         <ActionLinkButton onClick={() => onViewStaTask?.(record)}>
                           <span className="font-medium">
-                            {record.staNo}（{record.updatedAt}）
+                            {record.taskName?.trim() || record.staNo}
                           </span>
                         </ActionLinkButton>
                         <span>店铺：{record.store}</span>
