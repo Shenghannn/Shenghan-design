@@ -109,6 +109,95 @@ const fbaShipmentStatusLabels: Record<FbaShipmentStatusCode, string> = {
   ABANDONED: "已放弃",
 };
 
+const fbaShipmentStatusDescriptions: Partial<Record<FbaShipmentStatusCode, string>> = {
+  WORKING: "已创建货件，但未发货。",
+  READY_TO_SHIP: "货件已装箱并打印箱子标签，准备发货",
+  SHIPPED: "承运人已取件",
+  IN_TRANSIT: "承运人已通知亚马逊配送中心其已知晓货件的存在",
+  DELIVERED: "承运人已将货件配送至亚马逊配送中心。",
+  CHECKED_IN: "货件已在亚马逊配送中心的收货装卸地点登记",
+  RECEIVING: "货件已到达亚马逊配送中心，但有部分商品尚未标记为已收到",
+  CLOSED: "货件已到达亚马逊配送中心，且所有商品已标记为已收到。",
+  DELETED: "卖家在将货件发送到亚马逊配送中心之前取消了货件",
+  CANCELLED: "卖家在货件发送至亚马逊配送中心后取消了货件",
+};
+
+const fbaShipmentStatusOrder: FbaShipmentStatusCode[] = [
+  "UNCONFIRMED",
+  "WORKING",
+  "READY_TO_SHIP",
+  "SHIPPED",
+  "IN_TRANSIT",
+  "DELIVERED",
+  "CHECKED_IN",
+  "RECEIVING",
+  "CLOSED",
+  "DELETED",
+  "CANCELLED",
+  "ABANDONED",
+];
+
+function getFbaShipmentStatusTooltip(status: FbaShipmentStatusCode) {
+  const label = fbaShipmentStatusLabels[status];
+  const description = fbaShipmentStatusDescriptions[status];
+  return description ? `${label}：${description}` : label;
+}
+
+function FbaShipmentStatusBadge({ status }: { status: FbaShipmentStatusCode }) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLSpanElement>(null);
+
+  function updatePosition() {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return;
+    }
+
+    setCoords({
+      top: rect.top - 8,
+      left: rect.left + rect.width / 2,
+    });
+  }
+
+  function handleEnter() {
+    updatePosition();
+    setOpen(true);
+  }
+
+  function handleLeave() {
+    setOpen(false);
+  }
+
+  const tooltip = getFbaShipmentStatusTooltip(status);
+
+  return (
+    <>
+      <span
+        ref={triggerRef}
+        className="inline-flex"
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
+      >
+        <Badge tone={fbaShipmentStatusTone(status)} className="shrink-0">
+          {status}
+        </Badge>
+      </span>
+      {open && coords
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-[9999] max-w-[320px] -translate-x-1/2 -translate-y-full rounded-sm border border-border bg-white px-3 py-2 text-small leading-relaxed text-text-primary shadow-md"
+              style={{ top: coords.top, left: coords.left }}
+            >
+              {tooltip}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
 const tableHeadCell = "whitespace-nowrap px-3 py-3 font-medium";
 
 const countryFilterOptions: SelectOption[] = [
@@ -140,6 +229,10 @@ const currentStepFilterOptions: SelectOption[] = [
   { label: "货件追踪", value: "tracking" },
 ];
 
+const fbaCurrentStepFilterOptions: SelectOption[] = currentStepFilterOptions.filter(
+  (option) => option.value !== "select-products",
+);
+
 const warehouseSplitFilterOptions: SelectOption[] = [
   { label: "先装箱再分仓", value: "pack-first" },
   { label: "先分仓再装箱", value: "split-first" },
@@ -154,10 +247,6 @@ const fbaShipmentTypeOptions: SelectOption[] = [
   { label: "STA", value: "sta" },
   { label: "旧版货件", value: "legacy" },
 ];
-
-const fbaShipmentStatusFilterOptions: SelectOption[] = Object.entries(fbaShipmentStatusLabels).map(
-  ([value, label]) => ({ label, value }),
-);
 
 const fbaDeclareReceiveDiffOptions: SelectOption[] = [
   { label: "有差异", value: "has-diff" },
@@ -584,6 +673,96 @@ function FilterField({
   widthClass?: string;
 }) {
   return <div className={`shrink-0 ${widthClass} ${className ?? ""}`}>{children}</div>;
+}
+
+function FbaShipmentStatusMultiSelect({
+  placeholder = "请选择货件状态",
+  className,
+}: {
+  placeholder?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [selectedValues, setSelectedValues] = useState<FbaShipmentStatusCode[]>([]);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const displayLabel =
+    selectedValues.length === 0
+      ? placeholder
+      : selectedValues.length === 1
+        ? selectedValues[0]
+        : `已选 ${selectedValues.length} 项`;
+
+  function toggleValue(value: FbaShipmentStatusCode) {
+    setSelectedValues((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value],
+    );
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`field-control flex min-w-0 items-center justify-between gap-2 pr-10 text-left ${className ?? ""}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span
+          className={`block min-w-0 flex-1 whitespace-nowrap ${
+            selectedValues.length > 0 ? "truncate text-text-primary" : "text-text-placeholder"
+          }`}
+          title={displayLabel}
+        >
+          {displayLabel}
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-[calc(100%+4px)] z-50 max-h-72 w-[320px] overflow-auto rounded-sm border border-border bg-white p-1 shadow-md">
+          {fbaShipmentStatusOrder.map((status) => {
+            const active = selectedValues.includes(status);
+            return (
+              <button
+                key={status}
+                type="button"
+                className={`flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-body transition hover:bg-bg-hover ${
+                  active ? "bg-primary-subtle" : ""
+                }`}
+                onClick={() => toggleValue(status)}
+              >
+                <input type="checkbox" checked={active} readOnly className="pointer-events-none shrink-0" />
+                <span className="min-w-0 flex-1 truncate whitespace-nowrap">
+                  <span className="font-medium text-text-primary">{status}</span>
+                  <span className="ml-2 text-text-muted">{fbaShipmentStatusLabels[status]}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function MultiSelect({
@@ -1136,14 +1315,16 @@ function StaTaskOperationCell({
 function FbaShipmentOperationCell({
   record,
   onAction,
+  onView,
 }: {
   record: FbaShipmentRecord;
   onAction?: (action: string, record: FbaShipmentRecord) => void;
+  onView?: (record: FbaShipmentRecord) => void;
 }) {
   return (
     <td className="whitespace-nowrap px-3 py-3">
       <div className="flex flex-nowrap items-center justify-end gap-3">
-        <ActionLinkButton>详情</ActionLinkButton>
+        <ActionLinkButton onClick={() => onView?.(record)}>详情</ActionLinkButton>
         <ActionDropdown options={actionSelectOptions} onSelect={(value) => onAction?.(value, record)} />
       </div>
     </td>
@@ -1993,9 +2174,11 @@ export function StaTaskPage({
 export function FbaShipmentPage({
   records,
   onEditFbaShipment,
+  onViewFbaShipment,
 }: {
   records: FbaShipmentRecord[];
   onEditFbaShipment?: (record: FbaShipmentRecord) => void;
+  onViewFbaShipment?: (record: FbaShipmentRecord) => void;
 }) {
   const {
     page,
@@ -2040,7 +2223,7 @@ export function FbaShipmentPage({
             />
           </FilterField>
           <FilterField widthClass="w-[180px]">
-            <MultiSelect options={fbaShipmentStatusFilterOptions} placeholder="请选择货件状态" />
+            <FbaShipmentStatusMultiSelect />
           </FilterField>
           <FilterField widthClass="w-[180px]">
             <Select
@@ -2070,7 +2253,7 @@ export function FbaShipmentPage({
             />
           </FilterField>
           <FilterField widthClass="w-[180px]">
-            <MultiSelect options={currentStepFilterOptions} placeholder="请选择当前步骤" />
+            <MultiSelect options={fbaCurrentStepFilterOptions} placeholder="请选择当前步骤" />
           </FilterField>
           <FilterField widthClass="w-[212px]">
             <MultiSelect
@@ -2156,12 +2339,16 @@ export function FbaShipmentPage({
                       </div>
                     </td>
                     <TableStatusCell>
-                      <Badge tone={fbaShipmentStatusTone(record.shipmentStatus)} className="shrink-0">
-                        {fbaShipmentStatusLabels[record.shipmentStatus]}
-                      </Badge>
+                      <FbaShipmentStatusBadge status={record.shipmentStatus} />
+                      {record.hasStaTask && record.currentStep !== "选择发货商品" ? (
+                        <Badge tone="processing" className="shrink-0">
+                          {record.currentStep}
+                        </Badge>
+                      ) : null}
                     </TableStatusCell>
                     <FbaShipmentOperationCell
                       record={record}
+                      onView={onViewFbaShipment}
                       onAction={(action, item) => {
                         if (action === "edit") {
                           onEditFbaShipment?.(item);

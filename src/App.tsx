@@ -1143,12 +1143,28 @@ export default function App() {
     openWorkspaceTab("sta-task-detail");
   }
 
+  function openStaTaskDetailStep(record: StaTaskRecord, targetStep: StaWizardStepName, activeStep: StaWizardStepName) {
+    if (targetStep === activeStep) {
+      return;
+    }
+
+    if (staTaskDetailReturnToEdit && targetStep === record.currentStep) {
+      openEditStaTask(record);
+      setStaTaskDetailReturnToEdit(false);
+      return;
+    }
+
+    setStaTaskDetailId(record.id);
+    setStaTaskDetailStep(targetStep);
+    openWorkspaceTab("sta-task-detail");
+  }
+
   function openEditFbaShipment(record: FbaShipmentRecord) {
     const relatedStaTask = staTaskRecords.find((item) => item.staNo === record.staNo);
     if (relatedStaTask) {
       setEditStaTaskContext({
         ...buildEditStaTaskContext(relatedStaTask),
-        currentStep: record.currentStep,
+        currentStep: relatedStaTask.currentStep,
         activeShipmentId: record.shipmentId,
       });
     } else {
@@ -1161,6 +1177,16 @@ export default function App() {
       });
     }
     openWorkspaceTab("edit-sta-task");
+  }
+
+  function openFbaShipmentDetail(record: FbaShipmentRecord) {
+    const relatedStaTask = staTaskRecords.find((item) => item.staNo === record.staNo);
+    if (!relatedStaTask) {
+      showPendingAlert("FBA货件详情");
+      return;
+    }
+
+    openStaTaskDetail(relatedStaTask, relatedStaTask.currentStep);
   }
 
   function handleSaveStaDraft(payload: StaDraftPayload) {
@@ -1357,6 +1383,19 @@ export default function App() {
   const staTaskDetailRecord = useMemo(
     () => staTaskRecords.find((record) => record.id === staTaskDetailId) ?? null,
     [staTaskDetailId, staTaskRecords],
+  );
+  const fbaShipmentDisplayRecords = useMemo(
+    () =>
+      fbaShipmentRecords.map((record) => {
+        const relatedStaTask = staTaskRecords.find((item) => item.staNo === record.staNo);
+        return relatedStaTask
+          ? {
+              ...record,
+              currentStep: relatedStaTask.currentStep,
+            }
+          : record;
+      }),
+    [fbaShipmentRecords, staTaskRecords],
   );
 
   const tabs = useMemo(() => {
@@ -2027,6 +2066,7 @@ export default function App() {
           onEdit={() => openEditStaTask(staTaskDetailRecord)}
           onPreviousStep={openPreviousStaTaskDetail}
           onNextStep={openNextStaTaskDetail}
+          onStepClick={openStaTaskDetailStep}
         />
       ) : null}
       {activeTab === "sta-task" && (
@@ -2037,7 +2077,11 @@ export default function App() {
         />
       )}
       {activeTab === "fba-shipment" && (
-        <FbaShipmentPage records={fbaShipmentRecords} onEditFbaShipment={openEditFbaShipment} />
+        <FbaShipmentPage
+          records={fbaShipmentDisplayRecords}
+          onEditFbaShipment={openEditFbaShipment}
+          onViewFbaShipment={openFbaShipmentDetail}
+        />
       )}
       {activeTab === "inventory-query" && (
         <InventoryQueryPage

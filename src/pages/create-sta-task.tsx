@@ -666,40 +666,53 @@ function DetailMini({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StaWizardStepBar({ currentStepIndex }: { currentStepIndex: number }) {
+function StaWizardStepBar({
+  currentStepIndex,
+  onStepClick,
+}: {
+  currentStepIndex: number;
+  onStepClick?: (step: StaWizardStepName, index: number) => void;
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border pb-6">
+    <div className="flex overflow-hidden border-b border-border pb-6">
       {staWizardSteps.map((label, index) => {
         const stepNumber = index + 1;
         const isActive = index === currentStepIndex;
         const isCompleted = index < currentStepIndex;
+        const isUnreached = index > currentStepIndex;
+        const isClickable = Boolean(onStepClick) && !isUnreached;
+        const iconText = isCompleted ? "✓" : stepNumber;
 
         return (
-          <div key={label} className="flex min-w-0 items-center gap-2">
-            {index > 0 ? <span className="mx-1 hidden h-px w-8 bg-border sm:block" aria-hidden="true" /> : null}
-            <div
-              className={`flex min-w-0 items-center gap-2 rounded-sm px-1 py-1 text-small ${
+          <button
+            key={label}
+            type="button"
+            disabled={!isClickable}
+            onClick={() => onStepClick?.(label, index)}
+            className={`relative -ml-4 flex h-9 min-w-0 flex-1 items-center justify-center gap-2 border-0 px-5 pl-8 text-small first:ml-0 first:pl-5 ${
+              isClickable ? "cursor-pointer hover:brightness-[0.98]" : "cursor-not-allowed"
+            } ${
                 isActive
-                  ? "font-medium text-primary"
+                  ? "bg-primary font-medium text-white"
                   : isCompleted
-                    ? "text-text-secondary"
-                    : "text-text-muted"
+                    ? "bg-primary-subtle text-primary"
+                    : "bg-[#F3F4F6] text-[#9CA3AF]"
+            }`}
+            style={{ clipPath: "polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%, 18px 50%)" }}
+          >
+            <span
+              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none ${
+                isActive
+                  ? "bg-white text-primary"
+                  : isCompleted
+                    ? "bg-primary text-white"
+                    : "border border-[#9CA3AF] bg-white text-[#9CA3AF]"
               }`}
             >
-              <span
-                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-caption ${
-                  isActive
-                    ? "border-primary bg-primary text-white"
-                    : isCompleted
-                      ? "border-primary bg-primary-subtle text-primary"
-                      : "border-border bg-white text-text-muted"
-                }`}
-              >
-                {stepNumber}
-              </span>
-              <span className="whitespace-nowrap">{label}</span>
-            </div>
-          </div>
+              {iconText}
+            </span>
+            <span className="truncate whitespace-nowrap">{label}</span>
+          </button>
         );
       })}
     </div>
@@ -928,6 +941,16 @@ export function CreateStaTaskPage({
     }
 
     onOpenPreviousStepDetail?.(editContext?.staNo ?? (resolvedStaTaskName || buildStaNo()), previousStep);
+  }
+
+  function handleStepBarClick(step: StaWizardStepName, index: number) {
+    if (index === wizardStepIndex) {
+      return;
+    }
+
+    if (index < wizardStepIndex) {
+      onOpenPreviousStepDetail?.(editContext?.staNo ?? (resolvedStaTaskName || buildStaNo()), step);
+    }
   }
 
   async function handleSubmitPacking() {
@@ -1280,7 +1303,7 @@ export function CreateStaTaskPage({
       </div>
 
       <Card>
-        <StaWizardStepBar currentStepIndex={wizardStepIndex} />
+        <StaWizardStepBar currentStepIndex={wizardStepIndex} onStepClick={handleStepBarClick} />
 
         {wizardStepIndex === 0 ? (
           <>

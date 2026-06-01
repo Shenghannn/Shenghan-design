@@ -3,6 +3,7 @@ import { ChevronDown, Pencil, ScrollText } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
+import { Input } from "../components/ui/input";
 import { getStaWizardStepIndex, type StaWizardStepName } from "./create-sta-task";
 import type { StaTaskRecord } from "./first-leg-prototypes";
 
@@ -16,40 +17,57 @@ const staWizardSteps = [
 
 const tableHeadCell = "whitespace-nowrap px-3 py-3 font-medium";
 
-function StaWizardStepBar({ currentStepIndex }: { currentStepIndex: number }) {
+function StaWizardStepBar({
+  currentStepIndex,
+  maxReachableStepIndex,
+  currentStepCompleted,
+  onStepClick,
+}: {
+  currentStepIndex: number;
+  maxReachableStepIndex: number;
+  currentStepCompleted: boolean;
+  onStepClick?: (step: StaWizardStepName, index: number) => void;
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border pb-6">
+    <div className="flex overflow-hidden border-b border-border pb-6">
       {staWizardSteps.map((label, index) => {
         const stepNumber = index + 1;
         const isActive = index === currentStepIndex;
-        const isCompleted = index < currentStepIndex;
+        const isCompleted = index < currentStepIndex || (!isActive && index < maxReachableStepIndex);
+        const isUnreached = index > maxReachableStepIndex;
+        const isClickable = Boolean(onStepClick) && !isUnreached;
+        const iconText = isCompleted || (isActive && currentStepCompleted) ? "✓" : stepNumber;
 
         return (
-          <div key={label} className="flex min-w-0 items-center gap-2">
-            {index > 0 ? <span className="mx-1 hidden h-px w-8 bg-border sm:block" aria-hidden="true" /> : null}
-            <div
-              className={`flex min-w-0 items-center gap-2 rounded-sm px-1 py-1 text-small ${
+          <button
+            key={label}
+            type="button"
+            disabled={!isClickable}
+            onClick={() => onStepClick?.(label, index)}
+            className={`relative -ml-4 flex h-9 min-w-0 flex-1 items-center justify-center gap-2 border-0 px-5 pl-8 text-small first:ml-0 first:pl-5 ${
+              isClickable ? "cursor-pointer hover:brightness-[0.98]" : "cursor-not-allowed"
+            } ${
                 isActive
-                  ? "font-medium text-primary"
+                  ? "bg-primary font-medium text-white"
                   : isCompleted
-                    ? "text-text-secondary"
-                    : "text-text-muted"
+                    ? "bg-primary-subtle text-primary"
+                    : "bg-[#F3F4F6] text-[#9CA3AF]"
+            }`}
+            style={{ clipPath: "polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%, 18px 50%)" }}
+          >
+            <span
+              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none ${
+                isActive
+                  ? "bg-white text-primary"
+                  : isCompleted
+                    ? "bg-primary text-white"
+                    : "border border-[#9CA3AF] bg-white text-[#9CA3AF]"
               }`}
             >
-              <span
-                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-caption ${
-                  isActive
-                    ? "border-primary bg-primary text-white"
-                    : isCompleted
-                      ? "border-border bg-bg-page text-text-secondary"
-                      : "border-border bg-white text-text-muted"
-                }`}
-              >
-                {stepNumber}
-              </span>
-              <span className="truncate">{label}</span>
-            </div>
-          </div>
+              {iconText}
+            </span>
+            <span className="truncate whitespace-nowrap">{label}</span>
+          </button>
         );
       })}
     </div>
@@ -623,15 +641,303 @@ function DetailValue({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ReadonlySelectBox({ value }: { value: string }) {
+  return (
+    <div className="flex min-h-[36px] items-center justify-between rounded-sm border border-border bg-bg-subtle px-3 text-small text-text-secondary">
+      <span>{value}</span>
+      <ChevronDown aria-hidden="true" className="h-4 w-4 text-text-muted" />
+    </div>
+  );
+}
+
+function BoxLabelDetailBody({
+  record,
+  canGoPrevious,
+  canGoNext,
+  onPrevious,
+  onNext,
+}: {
+  record: StaTaskRecord;
+  canGoPrevious: boolean;
+  canGoNext: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  const shipments =
+    record.confirmedShipments && record.confirmedShipments.length > 0
+      ? record.confirmedShipments
+      : [
+          {
+            shipmentId: "FBA19C34CPYD",
+            fcCode: "YYZ7",
+            deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+            shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+          },
+          {
+            shipmentId: "FBA19C34CPYE",
+            fcCode: "YYZ7",
+            deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+            shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+          },
+        ];
+
+  return (
+    <>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        {shipments.map((shipment) => (
+          <div key={shipment.shipmentId} className="rounded-md border border-border bg-white p-5 shadow-sm">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-section-title font-section-title text-text-primary">
+                  {shipment.shipmentName ?? `FBA STA (04/23/2026 08:24)-${shipment.fcCode}`}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <span className="rounded-sm border border-primary px-2 py-1 text-caption text-primary">SHIPPED</span>
+                <button type="button" className="border-0 bg-transparent text-small text-primary hover:underline">
+                  查看装箱明细&gt;&gt;
+                </button>
+                <button type="button" className="inline-flex items-center gap-1 border-0 bg-transparent text-small text-primary hover:underline">
+                  下载装箱清单
+                  <span aria-hidden="true">↓</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr]">
+              <span className="text-text-muted">货件单号</span>
+              <span>{shipment.shipmentId}</span>
+              <span className="text-text-muted">Reference ID</span>
+              <span>2D4WOETI</span>
+              <span className="text-text-muted">物流中心编码</span>
+              <span>{shipment.fcCode}</span>
+              <span className="text-text-muted">配送地址</span>
+              <span>{shipment.deliveryAddress}</span>
+            </div>
+
+            <div className="mt-5 border-l-4 border-primary pl-3 font-medium text-text-primary">配送服务</div>
+            <div className="mt-3 grid gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr_92px_1fr]">
+              <span className="text-text-muted">发货日期</span>
+              <span>2026-04-29</span>
+              <span className="text-text-muted">配送模式</span>
+              <span>亚马逊合作承运人(SEND)</span>
+              <span className="text-text-muted">承运人类型</span>
+              <span>汽运零担(LTL)</span>
+              <span className="text-text-muted">运输方式</span>
+              <span>海运</span>
+              <span className="text-text-muted">承运人</span>
+              <span>UPS</span>
+            </div>
+
+            <div className="mt-5 border-l-4 border-primary pl-3 font-medium text-text-primary">打印标签</div>
+            <div className="mt-3 space-y-4 text-small">
+              <div className="grid items-center gap-3 md:grid-cols-[92px_1fr]">
+                <span className="text-text-muted">箱子标签</span>
+                <ReadonlySelectBox value="每张美国信纸一个标签" />
+              </div>
+              <label className="ml-[104px] flex items-start gap-2 text-text-primary">
+                <input type="checkbox" checked readOnly className="mt-0.5" />
+                <span>
+                  隐藏SHIP
+                  <br />
+                  FROM公司名
+                </span>
+              </label>
+              <div className="grid items-center gap-3 md:grid-cols-[92px_1fr]">
+                <span className="text-text-muted">卡板标签</span>
+                <ReadonlySelectBox value="每张美国信纸一个标签" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3 border-t border-border pt-6">
+        {canGoPrevious ? (
+          <Button variant="secondary" size="sm" onClick={onPrevious}>
+            上一步
+          </Button>
+        ) : null}
+        {canGoNext ? (
+          <Button variant="primary" size="sm" onClick={onNext}>
+            下一步
+          </Button>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function TrackingDetailBody({
+  record,
+  canGoPrevious,
+  onPrevious,
+}: {
+  record: StaTaskRecord;
+  canGoPrevious: boolean;
+  onPrevious: () => void;
+}) {
+  const shipments =
+    record.confirmedShipments && record.confirmedShipments.length > 0
+      ? record.confirmedShipments
+      : [
+          {
+            shipmentId: "FBA19C34CPYD",
+            fcCode: "YYZ7",
+            deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+            shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+          },
+          {
+            shipmentId: "FBA19C34CPYE",
+            fcCode: "YYZ7",
+            deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+            shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+          },
+        ];
+  const [editingField, setEditingField] = useState<string | null>(null);
+
+  function isEditing(shipmentId: string, field: "deliveryWindow" | "tracking") {
+    return editingField === `${shipmentId}-${field}`;
+  }
+
+  return (
+    <>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        {shipments.map((shipment) => {
+          const deliveryEditing = isEditing(shipment.shipmentId, "deliveryWindow");
+          const trackingEditing = isEditing(shipment.shipmentId, "tracking");
+
+          return (
+            <div key={shipment.shipmentId} className="rounded-md border border-border bg-white p-5 shadow-sm">
+              <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                <div className="text-section-title font-section-title text-text-primary">
+                  {shipment.shipmentName ?? `FBA STA (04/23/2026 08:24)-${shipment.fcCode}`}
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <span className="rounded-sm border border-primary px-2 py-1 text-caption text-primary">SHIPPED</span>
+                  <button type="button" className="border-0 bg-transparent text-small text-primary hover:underline">
+                    查看装箱明细&gt;&gt;
+                  </button>
+                  <button type="button" className="inline-flex items-center gap-1 border-0 bg-transparent text-small text-primary hover:underline">
+                    下载装箱清单
+                    <span aria-hidden="true">↓</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr]">
+                <span className="text-text-muted">货件单号</span>
+                <span>{shipment.shipmentId}</span>
+                <span className="text-text-muted">Reference ID</span>
+                <span>2D4WOETI</span>
+                <span className="text-text-muted">物流中心编码</span>
+                <span>{shipment.fcCode}</span>
+                <span className="text-text-muted">配送地址</span>
+                <span>{shipment.deliveryAddress}</span>
+              </div>
+
+              <div className="mt-5 border-l-4 border-primary pl-3 font-medium text-text-primary">送达时段</div>
+              <div className="mt-3 grid items-center gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr]">
+                <span className="text-text-muted">
+                  <span className="text-danger">*</span>
+                  送达时段
+                </span>
+                <div className="flex min-w-0 items-center gap-3">
+                  {deliveryEditing ? (
+                    <Input defaultValue="2020-04-21 08:30 ~ 2020-05-10 08:30" className="max-w-[360px]" />
+                  ) : (
+                    <span>
+                      2026-06-07 ~ 2026-06-14
+                      <span className="ml-2 text-warning">（2026-06-07之前可重新编辑）</span>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="shrink-0 border-0 bg-transparent text-small text-primary hover:underline"
+                    onClick={() => setEditingField(`${shipment.shipmentId}-deliveryWindow`)}
+                  >
+                    编辑
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-5 border-l-4 border-primary pl-3 font-medium text-text-primary">配送服务</div>
+              <div className="mt-3 grid gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr_92px_1fr]">
+                <span className="text-text-muted">发货日期</span>
+                <span>2026-04-29</span>
+                <span className="text-text-muted">配送模式</span>
+                <span>亚马逊合作承运人(SEND)</span>
+                <span className="text-text-muted">承运人类型</span>
+                <span>汽运零担(LTL)</span>
+                <span className="text-text-muted">运输方式</span>
+                <span>海运</span>
+                <span className="text-text-muted">承运人</span>
+                <span>UPS</span>
+              </div>
+
+              <div className="mt-5 flex items-center gap-3 border-l-4 border-primary pl-3 font-medium text-text-primary">
+                <span>货件追踪</span>
+                {trackingEditing ? (
+                  <span className="flex gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setEditingField(null)}>
+                      取消
+                    </Button>
+                    <Button variant="primary" size="sm" onClick={() => setEditingField(null)}>
+                      确定
+                    </Button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="border-0 bg-transparent text-small text-primary hover:underline"
+                    onClick={() => setEditingField(`${shipment.shipmentId}-tracking`)}
+                  >
+                    编辑
+                  </button>
+                )}
+              </div>
+              <div className="mt-3 grid gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr]">
+                <span className="text-text-muted">提货单号(BOL)</span>
+                {trackingEditing ? <Input placeholder="请输入提货单号" /> : <span />}
+                <span className="text-text-muted">
+                  <span className="text-danger">*</span>
+                  跟踪编号(PRO)
+                </span>
+                {trackingEditing ? <Input placeholder="请输入跟踪编号" /> : <span />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3 border-t border-border pt-6">
+        {canGoPrevious ? (
+          <Button variant="secondary" size="sm" onClick={onPrevious}>
+            上一步
+          </Button>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
 type StaTaskDetailPageProps = {
   record: StaTaskRecord;
   onEdit: () => void;
   detailStep?: StaWizardStepName;
   onPreviousStep: (record: StaTaskRecord, activeStep: StaWizardStepName) => void;
   onNextStep: (record: StaTaskRecord, activeStep: StaWizardStepName) => void;
+  onStepClick: (record: StaTaskRecord, targetStep: StaWizardStepName, activeStep: StaWizardStepName) => void;
 };
 
-export function StaTaskDetailPage({ record, onEdit, detailStep, onPreviousStep, onNextStep }: StaTaskDetailPageProps) {
+export function StaTaskDetailPage({
+  record,
+  onEdit,
+  detailStep,
+  onPreviousStep,
+  onNextStep,
+  onStepClick,
+}: StaTaskDetailPageProps) {
   const activeDetailStep = detailStep ?? (record.currentStep as StaWizardStepName);
   const stepIndex = getStaWizardStepIndex(activeDetailStep);
   const currentStepIndex = getStaWizardStepIndex(record.currentStep as StaWizardStepName);
@@ -643,11 +949,14 @@ export function StaTaskDetailPage({ record, onEdit, detailStep, onPreviousStep, 
   const activeStepCompleted =
     forceCompletedDetail ||
     (activeDetailStep === "商品装箱" && record.packingStatus === "已完成") ||
-    (activeDetailStep === "配送服务" && record.deliveryStatus === "已完成");
+    (activeDetailStep === "配送服务" && record.deliveryStatus === "已完成") ||
+    activeDetailStep === "箱子标签";
   const canGoNextStep = activeStepCompleted && stepIndex < staWizardSteps.length - 1;
   const showSelectProductsDetail = activeDetailStep === "选择发货商品";
   const showPackingDetail = activeDetailStep === "商品装箱";
   const showDeliveryDetail = activeDetailStep === "配送服务";
+  const showBoxLabelDetail = activeDetailStep === "箱子标签";
+  const showTrackingDetail = activeDetailStep === "货件追踪";
 
   return (
     <div className="space-y-4">
@@ -663,7 +972,12 @@ export function StaTaskDetailPage({ record, onEdit, detailStep, onPreviousStep, 
       </div>
 
       <Card>
-        <StaWizardStepBar currentStepIndex={stepIndex} />
+        <StaWizardStepBar
+          currentStepIndex={stepIndex}
+          maxReachableStepIndex={currentStepIndex}
+          currentStepCompleted={activeStepCompleted}
+          onStepClick={(targetStep) => onStepClick(record, targetStep, activeDetailStep)}
+        />
 
         {showSelectProductsDetail ? (
           <SelectProductsDetailBody
@@ -692,6 +1006,20 @@ export function StaTaskDetailPage({ record, onEdit, detailStep, onPreviousStep, 
             onEdit={onEdit}
             onPrevious={() => onPreviousStep(record, activeDetailStep)}
             onNext={() => onNextStep(record, activeDetailStep)}
+          />
+        ) : showBoxLabelDetail ? (
+          <BoxLabelDetailBody
+            record={record}
+            canGoPrevious={canGoPreviousStep}
+            canGoNext={canGoNextStep}
+            onPrevious={() => onPreviousStep(record, activeDetailStep)}
+            onNext={() => onNextStep(record, activeDetailStep)}
+          />
+        ) : showTrackingDetail ? (
+          <TrackingDetailBody
+            record={record}
+            canGoPrevious={canGoPreviousStep}
+            onPrevious={() => onPreviousStep(record, activeDetailStep)}
           />
         ) : (
           <div className="mt-6 rounded-md border border-dashed border-border bg-bg-page/60 px-6 py-10 text-center">
