@@ -102,15 +102,6 @@ export function ExportTaskCenterPage({
 
   return (
     <div className="space-y-4">
-      <div className="page-header">
-        <div>
-          <div className="page-title">导出任务中心</div>
-          <div className="mt-2 text-body text-text-secondary">
-            统一承接列表、主数据和报表导出任务，集中查看状态、下载文件和重试失败任务。
-          </div>
-        </div>
-      </div>
-
       <section className="page-section relative overflow-hidden p-0">
         <div className="min-h-[680px]">
           <div className="flex h-12 items-center justify-between border-b border-border bg-white px-section">

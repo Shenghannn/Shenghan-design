@@ -157,16 +157,6 @@ export function DesignSystemPage() {
   return (
     <div className="space-y-4">
       <section className="space-y-4">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Design System</h1>
-            <div className="mt-2 text-small text-text-muted">
-              Shenghan 原型展示平台的视觉规范总览，只展示稳定可复用的UI基线和控件约束。
-            </div>
-          </div>
-          <Badge tone="processing">V1.1</Badge>
-        </div>
-
         <div className="grid gap-4 xl:grid-cols-3">
           {designSystemPrinciples.map((item, index) => {
             const Icon = principleIcons[index] ?? SwatchBook;

@@ -24,3 +24,17 @@ export function PageHeader({
     </div>
   );
 }
+
+export function PageActions({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-wrap items-center justify-end gap-actions", className)}>
+      {children}
+    </div>
+  );
+}

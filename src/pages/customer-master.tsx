@@ -23,7 +23,7 @@ import { ImportResultPanel } from "../components/ui/import-result-panel";
 import { ListPageMainCard, ListPageToolbar } from "../components/ui/list-page-layout";
 import { Modal } from "../components/ui/modal";
 import { Pagination } from "../components/ui/pagination";
-import { PageHeader } from "../components/ui/page-header";
+import { PageActions } from "../components/ui/page-header";
 import { getVisibleQuerySectionItems, hasCollapsedQuerySectionItems } from "../components/ui/query-section";
 import { RadioGroup } from "../components/ui/radio-group";
 import { SegmentedControl } from "../components/ui/segmented-control";
@@ -751,19 +751,15 @@ export function CustomerListPage({
     <div className="space-y-page-block">
       <DemoToolbar label="列表页" items={customerListTabs} value={scenario} onChange={onScenarioChange} />
 
-      <PageHeader
-        title="客户主数据"
-        description="用于维护客户建档、审核、推送金蝶与结算主体信息。"
-        actions={
-          <>
-            <Button variant="primary" onClick={onOpenCreate}>
-              新增客户
-            </Button>
-            <Button onClick={onOpenImport}>导入</Button>
-            <Button onClick={onOpenExport}>导出</Button>
-          </>
-        }
-      />
+      <PageActions>
+        <>
+          <Button variant="primary" onClick={onOpenCreate}>
+            新增客户
+          </Button>
+          <Button onClick={onOpenImport}>导入</Button>
+          <Button onClick={onOpenExport}>导出</Button>
+        </>
+      </PageActions>
 
       <StatusNotice
         notice={notice}
@@ -1153,22 +1149,18 @@ export function CustomerEditPage({
     <div className="space-y-page-block">
       <DemoToolbar label={mode === "create" ? "新增页" : "编辑页"} items={customerEditTabs} value={scenario} onChange={onScenarioChange} />
 
-      <PageHeader
-        title={mode === "create" ? "新增客户主数据" : `编辑客户 ${currentCode}`}
-        description="客户主数据在提交审核前允许反复保存；提交后进入待审核状态，审核通过后才能推送金蝶。"
-        actions={
-          <>
-            <Button onClick={onBackToList}>返回列表</Button>
-            {form.code ? <Button onClick={() => onOpenDetail(form.code)}>查看详情</Button> : null}
-            <Button disabled={readOnly} onClick={handleSave}>
-              保存草稿
-            </Button>
-            <Button variant="primary" disabled={readOnly} onClick={handleSubmit}>
-              提交审核
-            </Button>
-          </>
-        }
-      />
+      <PageActions>
+        <>
+          <Button onClick={onBackToList}>返回列表</Button>
+          {form.code ? <Button onClick={() => onOpenDetail(form.code)}>查看详情</Button> : null}
+          <Button disabled={readOnly} onClick={handleSave}>
+            保存草稿
+          </Button>
+          <Button variant="primary" disabled={readOnly} onClick={handleSubmit}>
+            提交审核
+          </Button>
+        </>
+      </PageActions>
 
       <StatusNotice notice={notice ?? forcedScenarioNotice} />
 
@@ -1271,7 +1263,6 @@ export function CustomerDetailPage({
     return (
       <div className="space-y-page-block">
         <DemoToolbar label="详情页" items={customerDetailTabs} value={scenario} onChange={onScenarioChange} />
-        <PageHeader title="客户详情" description="详情页必须覆盖无权限和推送异常状态。" />
         <ExceptionState
           variant="403"
           description="当前用户可以看客户列表，但没有客户详情访问权限。"
@@ -1314,7 +1305,6 @@ export function CustomerDetailPage({
   return (
     <div className="space-y-page-block">
       <DemoToolbar label="详情页" items={customerDetailTabs} value={scenario} onChange={onScenarioChange} />
-      <PageHeader title="客户详情" description="详情页展示客户分组、审核记录、推送状态和主数据变更轨迹。" />
 
       <section className="detail-hero">
         <div className="detail-hero-main">

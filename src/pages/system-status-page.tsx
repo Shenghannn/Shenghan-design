@@ -37,16 +37,6 @@ export function SystemStatusPage({
 
   return (
     <div className="space-y-4">
-      <div className="page-header">
-        <div>
-          <div className="page-title">系统状态参考页</div>
-          <div className="mt-2 text-body text-text-secondary">
-            统一展示403、404、登录过期和系统维护4类系统状态页，用于后续系统级异常页复用。
-          </div>
-        </div>
-        <Badge tone="processing">异常页组件族</Badge>
-      </div>
-
       <Card title="状态切换" extra={<Badge tone="draft">系统参考</Badge>}>
         <div className="space-y-3">
           <SegmentedControl

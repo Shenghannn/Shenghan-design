@@ -23,7 +23,7 @@ import { ImportResultPanel } from "../components/ui/import-result-panel";
 import { ListPageMainCard, ListPageToolbar } from "../components/ui/list-page-layout";
 import { Modal } from "../components/ui/modal";
 import { Pagination } from "../components/ui/pagination";
-import { PageHeader } from "../components/ui/page-header";
+import { PageActions } from "../components/ui/page-header";
 import { getVisibleQuerySectionItems, hasCollapsedQuerySectionItems } from "../components/ui/query-section";
 import { RadioGroup } from "../components/ui/radio-group";
 import { SegmentedControl } from "../components/ui/segmented-control";
@@ -854,19 +854,15 @@ export function SupplierListPage({
     <div className="space-y-page-block">
       <DemoToolbar label="列表页" items={supplierListTabs} value={scenario} onChange={onScenarioChange} />
 
-      <PageHeader
-        title="供应商主数据"
-        description="用于维护供应商准入、审核、推送金蝶与合作状态控制。"
-        actions={
-          <>
-            <Button variant="primary" onClick={onOpenCreate}>
-              新增供应商
-            </Button>
-            <Button onClick={onOpenImport}>导入</Button>
-            <Button onClick={onOpenExport}>导出</Button>
-          </>
-        }
-      />
+      <PageActions>
+        <>
+          <Button variant="primary" onClick={onOpenCreate}>
+            新增供应商
+          </Button>
+          <Button onClick={onOpenImport}>导入</Button>
+          <Button onClick={onOpenExport}>导出</Button>
+        </>
+      </PageActions>
 
       <StatusNotice
         notice={notice}
@@ -1281,26 +1277,22 @@ export function SupplierEditPage({
     <div className="space-y-page-block">
       <DemoToolbar label={mode === "create" ? "新增页" : "编辑页"} items={supplierEditTabs} value={scenario} onChange={onScenarioChange} />
 
-      <PageHeader
-        title={mode === "create" ? "新增供应商主数据" : `编辑供应商 ${currentCode}`}
-        description="供应商主数据在提交审核前允许反复保存；提交后进入待审核状态，审核通过后才能推送金蝶。"
-        actions={
-          <>
-            <Button onClick={onBackToList}>返回列表</Button>
-            {form.code ? (
-              <Button onClick={() => onOpenDetail(form.code)}>
-                查看详情
-              </Button>
-            ) : null}
-            <Button disabled={readOnly} onClick={handleSave}>
-              保存草稿
+      <PageActions>
+        <>
+          <Button onClick={onBackToList}>返回列表</Button>
+          {form.code ? (
+            <Button onClick={() => onOpenDetail(form.code)}>
+              查看详情
             </Button>
-            <Button variant="primary" disabled={readOnly} onClick={handleSubmit}>
-              提交审核
-            </Button>
-          </>
-        }
-      />
+          ) : null}
+          <Button disabled={readOnly} onClick={handleSave}>
+            保存草稿
+          </Button>
+          <Button variant="primary" disabled={readOnly} onClick={handleSubmit}>
+            提交审核
+          </Button>
+        </>
+      </PageActions>
 
       <StatusNotice notice={notice ?? forcedScenarioNotice} />
 
@@ -1502,7 +1494,6 @@ export function SupplierDetailPage({
     return (
       <div className="space-y-page-block">
         <DemoToolbar label="详情页" items={supplierDetailTabs} value={scenario} onChange={onScenarioChange} />
-        <PageHeader title="供应商详情" description="详情页必须覆盖无权限、推送异常和停止合作状态。" />
         <ExceptionState
           variant="403"
           description="当前用户可以看供应商列表，但没有供应商详情访问权限。"
@@ -1546,7 +1537,6 @@ export function SupplierDetailPage({
   return (
     <div className="space-y-page-block">
       <DemoToolbar label="详情页" items={supplierDetailTabs} value={scenario} onChange={onScenarioChange} />
-      <PageHeader title="供应商详情" description="详情页展示合作状态、审核记录、推送状态和主数据变更轨迹。" />
 
       <section className="detail-hero">
         <div className="detail-hero-main">

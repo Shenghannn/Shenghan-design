@@ -146,6 +146,8 @@ export type ConfirmedShipment = {
 
 export type EditStaTaskContext = {
   staNo: string;
+  planId?: string;
+  planNo?: string;
   store: string;
   status: "草稿" | "进行中" | "已发货" | "已取消" | "异常";
   currentStep: StaWizardStepName;
@@ -179,6 +181,7 @@ export type StaDraftPayload = {
   skuCount: number;
   totalQty: number;
   products: EditStaTaskContext["products"];
+  sourcePlanId?: string;
   sourcePlanNo?: string;
 };
 
@@ -196,6 +199,7 @@ export type StaPlacementConfirmPayload = {
   shipments: ConfirmedShipment[];
   skuCount: number;
   totalQty: number;
+  sourcePlanId?: string;
   sourcePlanNo?: string;
 };
 
@@ -912,7 +916,8 @@ export function CreateStaTaskPage({
       skuCount: products.length,
       totalQty: products.reduce((sum, product) => sum + product.declaredQty, 0),
       products: products.map((product) => ({ ...product })),
-      sourcePlanNo: source?.planNo,
+      sourcePlanId: source?.planId ?? editContext?.planId,
+      sourcePlanNo: source?.planNo ?? editContext?.planNo,
     };
   }
 
@@ -1197,7 +1202,8 @@ export function CreateStaTaskPage({
         shipments: nextShipments,
         skuCount: products.length,
         totalQty: products.reduce((sum, product) => sum + product.declaredQty, 0),
-        sourcePlanNo: source?.planNo,
+        sourcePlanId: source?.planId ?? editContext?.planId,
+        sourcePlanNo: source?.planNo ?? editContext?.planNo,
       });
 
       setConfirmedShipments(nextShipments);
@@ -1223,20 +1229,6 @@ export function CreateStaTaskPage({
 
   const prepEditTitle =
     prepEditTargetIds.length > 1 ? "批量编辑预处理提供方/标签类型" : "编辑预处理提供方/标签类型";
-
-  const pageTitle = isEditMode
-    ? editContext!.planCreated
-      ? `STA任务${editContext!.taskName?.trim() || editContext!.staNo}`
-      : "创建STA任务"
-    : staCreated
-      ? `STA任务${resolvedStaTaskName}`
-      : "创建STA任务";
-
-  const pageDescription = isEditMode
-    ? `当前步骤：${editContext!.currentStep} · 状态：${editContext!.status}`
-    : source
-      ? `来源发货计划：${source.planNo}`
-      : "";
 
   const wizardFooter = (
     <div className="mt-6 flex flex-wrap items-center justify-center gap-3 border-t border-border pt-6">
@@ -1289,13 +1281,7 @@ export function CreateStaTaskPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="page-title">{pageTitle}</h1>
-          {pageDescription ? (
-            <p className="mt-2 text-small text-text-muted">{pageDescription}</p>
-          ) : null}
-        </div>
+      <div className="flex flex-wrap items-start justify-end gap-4">
         <Button variant="secondary" size="sm">
           <ScrollText aria-hidden="true" className="h-4 w-4" />
           操作日志

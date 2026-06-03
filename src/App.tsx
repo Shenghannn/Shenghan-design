@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDownToLine, Bell, Building2, ChevronDown, CircleAlert, ClipboardList, Clock3, Download, House, LayoutGrid, PackageCheck, Palette, Plus, ScrollText, Settings2, Truck, Users, Warehouse } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, Bell, Building2, ChevronDown, CircleAlert, ClipboardList, Clock3, Download, House, LayoutGrid, Package, PackageCheck, Palette, Plus, ScrollText, Settings2, Truck, Users, Warehouse } from "lucide-react";
 import { AppShell } from "./components/app-shell";
 import { AttachmentPanel, type AttachmentItem } from "./components/ui/attachment-panel";
 import { Banner } from "./components/ui/banner";
@@ -26,7 +26,7 @@ import { ImportResultPanel } from "./components/ui/import-result-panel";
 import { ListPageMainCard, ListPageToolbar } from "./components/ui/list-page-layout";
 import { Modal } from "./components/ui/modal";
 import { Pagination } from "./components/ui/pagination";
-import { PageHeader } from "./components/ui/page-header";
+import { PageActions } from "./components/ui/page-header";
 import { getVisibleQuerySectionItems, hasCollapsedQuerySectionItems } from "./components/ui/query-section";
 import { RadioGroup } from "./components/ui/radio-group";
 import { SegmentedControl } from "./components/ui/segmented-control";
@@ -59,6 +59,7 @@ import {
 import { DesignSystemPage } from "./pages/design-system-page";
 import { InventoryFlowQueryPage } from "./pages/inventory-flow-query";
 import { InventoryQueryPage } from "./pages/inventory-query";
+import { LiangcangSkuPage } from "./pages/liangcang-sku-page";
 import {
   CreateStaTaskPage,
   type CreateStaTaskSource,
@@ -71,13 +72,16 @@ import {
 import {
   FbaShipmentPage,
   initialFbaShipmentRecords,
+  initialShippingPlanRecords,
   initialStaTaskRecords,
   ShippingPlanPage,
   StaTaskPage,
   type FbaShipmentRecord,
+  type ShippingPlanRecord,
   type StaTaskRecord,
 } from "./pages/first-leg-prototypes";
 import { StaTaskDetailPage } from "./pages/sta-task-detail";
+import { FbaLegacyShipmentDetailPage } from "./pages/fba-shipment-detail";
 import { ExportTaskCenterPage } from "./pages/export-task-center";
 import { MessageCenterPage } from "./pages/message-center";
 import { ShellCapabilitiesPage } from "./pages/shell-capabilities-page";
@@ -91,6 +95,11 @@ import {
   relatedDocuments,
 } from "./data/purchase-order";
 import { customerRecords as initialCustomerRecords, type CustomerRecord } from "./data/customer-master";
+import {
+  buildFbaRecordsFromPlacement,
+  canCreateStaFromPlan,
+  linkPlanToSta,
+} from "./data/first-leg-document-flow";
 import { supplierRecords as initialSupplierRecords, type SupplierRecord } from "./data/supplier-master";
 import {
   type CustomerDetailScenario,
@@ -133,12 +142,14 @@ const staWizardStepOrder: StaWizardStepName[] = [
 
 type WorkspaceTabKey =
   | "home"
+  | "liangcang-sku"
   | "shipping-plan"
   | "create-sta-task"
   | "edit-sta-task"
   | "sta-task-detail"
   | "sta-task"
   | "fba-shipment"
+  | "fba-shipment-detail"
   | "design-system"
   | "shell-capabilities"
   | "system-status"
@@ -518,7 +529,9 @@ export default function App() {
   const [staTaskDetailStep, setStaTaskDetailStep] = useState<StaWizardStepName | null>(null);
   const [staTaskDetailReturnToEdit, setStaTaskDetailReturnToEdit] = useState(false);
   const [staTaskRecords, setStaTaskRecords] = useState<StaTaskRecord[]>(initialStaTaskRecords);
+  const [shippingPlanRecords, setShippingPlanRecords] = useState<ShippingPlanRecord[]>(initialShippingPlanRecords);
   const [fbaShipmentRecords, setFbaShipmentRecords] = useState<FbaShipmentRecord[]>(initialFbaShipmentRecords);
+  const [fbaShipmentDetailId, setFbaShipmentDetailId] = useState<string | null>(null);
   const [listScenario, setListScenario] = useState<ListScenario>("normal");
   const [editScenario, setEditScenario] = useState<EditScenario>("normal");
   const [detailScenario, setDetailScenario] = useState<DetailScenario>("normal");
@@ -1048,9 +1061,56 @@ export default function App() {
     openWorkspaceTab("create-sta-task");
   }
 
+  function openCreateStaTaskFromPlan(record: ShippingPlanRecord) {
+    const check = canCreateStaFromPlan(record, staTaskRecords);
+    if (!check.allowed) {
+      showFloatingAlert({
+        tone: "error",
+        title: "无法创建 STA 任务",
+        description: check.reason,
+      });
+      return;
+    }
+
+    openCreateStaTask({
+      planId: record.id,
+      planNo: record.planNo,
+      store: record.store,
+    });
+  }
+
+  function openStaTaskFromPlan(record: ShippingPlanRecord) {
+    const relatedSta =
+      staTaskRecords.find((item) => item.id === record.staId) ??
+      staTaskRecords.find((item) => item.planId === record.id);
+
+    if (!relatedSta) {
+      showFloatingAlert({
+        tone: "error",
+        title: "未找到关联 STA 任务",
+        description: `发货计划 ${record.planNo} 暂无可用 STA 任务。`,
+      });
+      return;
+    }
+
+    openStaTaskDetail(relatedSta);
+  }
+
+  function linkShippingPlanToSta(planId: string | undefined, sta: Pick<StaTaskRecord, "id" | "staNo">, flowStatus: ShippingPlanRecord["flowStatus"]) {
+    if (!planId) {
+      return;
+    }
+
+    setShippingPlanRecords((current) =>
+      current.map((plan) => (plan.id === planId ? linkPlanToSta(plan, sta, flowStatus) : plan)),
+    );
+  }
+
   function buildEditStaTaskContext(record: StaTaskRecord): EditStaTaskContext {
     return {
       staNo: record.staNo,
+      planId: record.planId,
+      planNo: record.planNo,
       store: record.store,
       status: record.status,
       currentStep: record.currentStep,
@@ -1069,6 +1129,8 @@ export default function App() {
   ): StaTaskRecord {
     return {
       id: `sta-${Date.now()}`,
+      planId: payload.sourcePlanId,
+      planNo: payload.sourcePlanNo,
       staNo: payload.staNo,
       taskName: payload.taskName || payload.staNo,
       shipmentNo: "-",
@@ -1180,23 +1242,32 @@ export default function App() {
   }
 
   function openFbaShipmentDetail(record: FbaShipmentRecord) {
-    const relatedStaTask = staTaskRecords.find((item) => item.staNo === record.staNo);
-    if (!relatedStaTask) {
-      showPendingAlert("FBA货件详情");
+    if (record.hasStaTask) {
+      const relatedStaTask = staTaskRecords.find((item) => item.staNo === record.staNo);
+      if (!relatedStaTask) {
+        showPendingAlert("FBA货件详情");
+        return;
+      }
+
+      openStaTaskDetail(relatedStaTask, relatedStaTask.currentStep);
       return;
     }
 
-    openStaTaskDetail(relatedStaTask, relatedStaTask.currentStep);
+    setFbaShipmentDetailId(record.id);
+    openWorkspaceTab("fba-shipment-detail");
   }
 
   function handleSaveStaDraft(payload: StaDraftPayload) {
     const updatedAt = formatTaskTimestamp();
+    let savedRecord: StaTaskRecord | null = null;
+
     setStaTaskRecords((current) => {
       const existingIndex = current.findIndex((item) => item.staNo === payload.staNo);
       const nextRecord = buildStaTaskRecordFromForm(payload, {
         id: existingIndex >= 0 ? current[existingIndex].id : `sta-${Date.now()}`,
         updatedAt,
       });
+      savedRecord = nextRecord;
 
       if (existingIndex >= 0) {
         return current.map((item, index) => (index === existingIndex ? { ...item, ...nextRecord } : item));
@@ -1204,6 +1275,10 @@ export default function App() {
 
       return [nextRecord, ...current];
     });
+
+    if (savedRecord) {
+      linkShippingPlanToSta(payload.sourcePlanId, savedRecord, "sta_draft");
+    }
 
     showFloatingAlert({
       tone: "success",
@@ -1215,6 +1290,8 @@ export default function App() {
 
   function handleStaPlanCreated(payload: StaPlanCreatedPayload) {
     const updatedAt = payload.createdAt ?? formatTaskTimestamp();
+    let savedRecord: StaTaskRecord | null = null;
+
     setStaTaskRecords((current) => {
       const existingIndex = current.findIndex((item) => item.staNo === payload.staNo);
       const nextRecord = buildStaTaskRecordFromForm(payload, {
@@ -1228,6 +1305,7 @@ export default function App() {
         createdAt: updatedAt,
         updatedAt,
       });
+      savedRecord = nextRecord;
 
       if (existingIndex >= 0) {
         return current.map((item, index) => (index === existingIndex ? { ...item, ...nextRecord } : item));
@@ -1235,16 +1313,24 @@ export default function App() {
 
       return [nextRecord, ...current];
     });
+
+    if (savedRecord) {
+      linkShippingPlanToSta(payload.sourcePlanId, savedRecord, "sta_in_progress");
+    }
   }
 
   function handleConfirmStaPlacement(payload: StaPlacementConfirmPayload) {
     const updatedAt = formatTaskTimestamp();
     const primaryShipment = payload.shipments[0];
+    let savedStaId = `sta-${Date.now()}`;
 
     setStaTaskRecords((current) => {
       const existingIndex = current.findIndex((item) => item.staNo === payload.staNo);
+      savedStaId = existingIndex >= 0 ? current[existingIndex].id : savedStaId;
       const nextRecord: StaTaskRecord = {
-        id: existingIndex >= 0 ? current[existingIndex].id : `sta-${Date.now()}`,
+        id: savedStaId,
+        planId: payload.sourcePlanId,
+        planNo: payload.sourcePlanNo,
         staNo: payload.staNo,
         shipmentNo: primaryShipment?.shipmentId ?? "-",
         skuCount: payload.skuCount,
@@ -1266,24 +1352,21 @@ export default function App() {
       return [nextRecord, ...current];
     });
 
-    const newFbaRecords: FbaShipmentRecord[] = payload.shipments.map((shipment, index) => ({
-      id: `fba-${Date.now()}-${index}`,
-      shipmentId: shipment.shipmentId,
-      staNo: payload.staNo,
-      store: payload.store,
-      planNo: payload.sourcePlanNo?.replace(/^SP/, "PLN-") ?? `PLN-${payload.staNo.replace(/^STA-/, "")}`,
-      mskuCount: payload.skuCount,
-      totalQty: payload.totalQty,
-      destinationFc: shipment.fcCode,
-      boxMode: "先分仓再装箱",
-      shipmentStatus: "WORKING",
-      completionStatus: "进行中",
-      currentStep: "商品装箱",
-      hasStaTask: true,
-      updatedAt,
-    }));
-
+    const newFbaRecords = buildFbaRecordsFromPlacement(payload, updatedAt);
     setFbaShipmentRecords((current) => [...newFbaRecords, ...current]);
+
+    if (payload.sourcePlanId) {
+      setShippingPlanRecords((current) =>
+        current.map((plan) =>
+          plan.id === payload.sourcePlanId
+            ? {
+                ...linkPlanToSta(plan, { id: savedStaId, staNo: payload.staNo }, "fba_created"),
+                fbaShipmentCount: payload.shipments.length,
+              }
+            : plan,
+        ),
+      );
+    }
 
     showFloatingAlert({
       tone: "success",
@@ -1398,6 +1481,11 @@ export default function App() {
     [fbaShipmentRecords, staTaskRecords],
   );
 
+  const fbaShipmentDetailRecord = useMemo(
+    () => fbaShipmentDisplayRecords.find((record) => record.id === fbaShipmentDetailId) ?? null,
+    [fbaShipmentDetailId, fbaShipmentDisplayRecords],
+  );
+
   const tabs = useMemo(() => {
     const definitions = {
       home: { key: "home", label: "首页", closable: false, icon: House },
@@ -1406,6 +1494,7 @@ export default function App() {
       "system-status": { key: "system-status", label: "系统状态", closable: true, icon: AlertTriangle },
       "export-task-center": { key: "export-task-center", label: "导出任务中心", closable: true, icon: Download },
       "message-center": { key: "message-center", label: "消息中心", closable: true, icon: Bell },
+      "liangcang-sku": { key: "liangcang-sku", label: "良仓SKU资料", closable: true, icon: Package },
       "shipping-plan": { key: "shipping-plan", label: "发货计划", closable: true, icon: Truck },
       "create-sta-task": { key: "create-sta-task", label: "创建STA", closable: true, icon: ClipboardList },
       "edit-sta-task": {
@@ -1428,6 +1517,12 @@ export default function App() {
       },
       "sta-task": { key: "sta-task", label: "STA任务", closable: true, icon: ClipboardList },
       "fba-shipment": { key: "fba-shipment", label: "FBA货件", closable: true, icon: PackageCheck },
+      "fba-shipment-detail": {
+        key: "fba-shipment-detail",
+        label: fbaShipmentDetailRecord ? `详情${fbaShipmentDetailRecord.shipmentId}` : "货件详情",
+        closable: true,
+        icon: PackageCheck,
+      },
       list: { key: "list", label: "采购订单列表", closable: true },
       create: { key: "create", label: "新建采购订单", closable: true },
       edit: { key: "edit", label: "编辑采购订单", closable: true },
@@ -1445,7 +1540,7 @@ export default function App() {
     } as const;
 
     return openTabs.map((key) => definitions[key]);
-  }, [openTabs, editStaTaskContext, staTaskDetailRecord]);
+  }, [openTabs, editStaTaskContext, staTaskDetailRecord, fbaShipmentDetailRecord]);
 
   function openWorkspaceTab(tab: WorkspaceTabKey) {
     setOpenTabs((current) => (current.includes(tab) ? current : [...current, tab]));
@@ -1861,12 +1956,14 @@ export default function App() {
             ? "shipping-plan"
           : activeTab === "edit-sta-task" || activeTab === "sta-task-detail" || activeTab === "sta-task"
             ? "sta-task"
-          : activeTab === "fba-shipment"
+          : activeTab === "fba-shipment" || activeTab === "fba-shipment-detail"
             ? "fba-shipment"
           : activeTab === "inventory-query"
             ? "inventory-query"
           : activeTab === "inventory-flow-query"
             ? "inventory-flow-query"
+          : activeTab === "liangcang-sku"
+            ? "liangcang-sku"
           : "purchase-order";
 
   const currentTenant = tenantOptions.find((item) => item.id === currentTenantId) ?? tenantOptions[0];
@@ -1916,6 +2013,9 @@ export default function App() {
         }
         if (key === "customer") {
           openCustomerList();
+        }
+        if (key === "liangcang-sku") {
+          openWorkspaceTab("liangcang-sku");
         }
       }}
       onSecondaryNavSelect={(key) => {
@@ -2024,15 +2124,12 @@ export default function App() {
       )}
       {activeTab === "shipping-plan" && (
         <ShippingPlanPage
-          onCreateStaTask={(record) =>
-            openCreateStaTask({
-              planId: record.id,
-              planNo: record.planNo,
-              store: record.store,
-            })
-          }
+          records={shippingPlanRecords}
+          onCreateStaTask={openCreateStaTaskFromPlan}
+          onViewStaTask={openStaTaskFromPlan}
         />
       )}
+      {activeTab === "liangcang-sku" && <LiangcangSkuPage />}
       {activeTab === "create-sta-task" && createStaTaskSource ? (
         <CreateStaTaskPage
           source={createStaTaskSource}
@@ -2076,6 +2173,9 @@ export default function App() {
           onViewStaTask={openStaTaskDetail}
         />
       )}
+      {activeTab === "fba-shipment-detail" && fbaShipmentDetailRecord ? (
+        <FbaLegacyShipmentDetailPage record={fbaShipmentDetailRecord} />
+      ) : null}
       {activeTab === "fba-shipment" && (
         <FbaShipmentPage
           records={fbaShipmentDisplayRecords}
@@ -2606,11 +2706,6 @@ function HomePage({
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="首页"
-        description="系统默认着陆页，可快速打开采购订单、即时库存查询、库存流水查询、供应商主数据、客户主数据、壳层能力与消息中心、系统状态页这7个常见案例。"
-      />
-
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
         {shortcuts.map((item) => {
           const Icon = item.icon;
@@ -2991,30 +3086,26 @@ function ListPage({
   return (
     <div className="space-y-page-block">
       <DemoToolbar label="列表页" items={listTabs} value={scenario} onChange={onScenarioChange} />
-      <PageHeader
-        title="采购订单列表"
-        description="高频查询、状态Tab切换、批量审核和取消统一在列表页完成。"
-        actions={
-          <>
-            <Button variant="primary" onClick={onOpenCreate}>
-              新增采购订单
-            </Button>
-            <Button onClick={onOpenImport}>导入</Button>
-            <Button onClick={onOpenExport}>导出</Button>
-            <Button
-              onClick={() =>
-                onShowAlert({
-                  tone: "warning",
-                  title: "打印功能暂未纳入当前案例范围",
-                  description: "当前先保留打印入口占位，后续如规划会补打印模板、打印参数和任务回执。",
-                })
-              }
-            >
-              打印
-            </Button>
-          </>
-        }
-      />
+      <PageActions>
+        <>
+          <Button variant="primary" onClick={onOpenCreate}>
+            新增采购订单
+          </Button>
+          <Button onClick={onOpenImport}>导入</Button>
+          <Button onClick={onOpenExport}>导出</Button>
+          <Button
+            onClick={() =>
+              onShowAlert({
+                tone: "warning",
+                title: "打印功能暂未纳入当前案例范围",
+                description: "当前先保留打印入口占位，后续如规划会补打印模板、打印参数和任务回执。",
+              })
+            }
+          >
+            打印
+          </Button>
+        </>
+      </PageActions>
 
       <Card>
         <div className="query-section-grid 2xl:grid-cols-7">
@@ -3396,26 +3487,16 @@ function EditPage({
   return (
     <div className="space-y-page-block">
       <DemoToolbar label={mode === "create" ? "新建页" : "编辑页"} items={editTabs} value={scenario} onChange={onScenarioChange} />
-      <PageHeader
-        title={
-          mode === "create"
-            ? "新建采购订单"
-            : readOnly
-              ? "编辑采购订单 PO20260321001（只读）"
-              : "编辑采购订单 PO20260321001"
-        }
-        description="头信息与明细联动、校验和状态控制都要在骨架阶段显式保留。新建页与编辑页作为独立业务页签并行存在。"
-        actions={
-          <>
-            <Button onClick={onBackToList}>返回列表</Button>
-            <Button disabled={readOnly}>保存</Button>
-            <Button disabled={readOnly}>保存并新增</Button>
-            <Button variant="primary" disabled={readOnly}>
-              提交审核
-            </Button>
-          </>
-        }
-      />
+      <PageActions>
+        <>
+          <Button onClick={onBackToList}>返回列表</Button>
+          <Button disabled={readOnly}>保存</Button>
+          <Button disabled={readOnly}>保存并新增</Button>
+          <Button variant="primary" disabled={readOnly}>
+            提交审核
+          </Button>
+        </>
+      </PageActions>
 
       {scenario === "save-failed" ? (
         <Banner tone="error" title="保存失败" description="供应商已被停用，当前草稿无法保存，请刷新供应商信息后重试。" />
@@ -3604,10 +3685,6 @@ function DetailPage({
     return (
       <div className="space-y-page-block">
         <DemoToolbar label="详情页" items={detailTabs} value={scenario} onChange={onScenarioChange} />
-        <PageHeader
-          title="采购订单详情"
-          description="详情页必须补齐无权限、只读和上下游失败场景。"
-        />
         <ExceptionState
           variant="403"
           description="当前用户有列表查看权限，但无采购订单详情访问权限。请联系管理员开通详情页权限后再进入。"
@@ -3623,10 +3700,6 @@ function DetailPage({
   return (
     <div className="space-y-page-block">
       <DemoToolbar label="详情页" items={detailTabs} value={scenario} onChange={onScenarioChange} />
-      <PageHeader
-        title="采购订单详情"
-        description="详情页标题区采用左信息右操作，状态、创建时间等关键元信息不进入右侧操作区。"
-      />
 
       <section className="detail-hero">
         <div className="detail-hero-main">

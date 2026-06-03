@@ -77,16 +77,6 @@ export function ShellCapabilitiesPage({
 }) {
   return (
     <div className="space-y-4">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">壳层能力参考页</h1>
-          <div className="mt-2 text-small text-text-muted">
-            集中演示全局搜索、消息通知、用户菜单、工作台Tab、覆盖式抽屉和顶部轻提示这6类系统级能力。
-          </div>
-        </div>
-        <Badge tone="processing">系统级参考</Badge>
-      </div>
-
       <div className="grid gap-4 xl:grid-cols-2">
         {capabilityCards.map((item) => {
           const Icon = item.icon;

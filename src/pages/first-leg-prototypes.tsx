@@ -1,11 +1,10 @@
 import { Fragment, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Ellipsis, ImageIcon, Search } from "lucide-react";
+import { ChevronDown, ChevronsDown, Ellipsis, ImageIcon, Search } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { DateRangePicker } from "../components/ui/date-range-picker";
-import { PageHeader } from "../components/ui/page-header";
 import { Select, type SelectOption } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 
@@ -38,6 +37,8 @@ export type StaConfirmedShipment = {
 
 export type StaTaskRecord = {
   id: string;
+  planId?: string;
+  planNo?: string;
   staNo: string;
   shipmentNo: string;
   skuCount: number;
@@ -77,11 +78,26 @@ type FbaShipmentStatusCode =
   | "CANCELLED"
   | "ABANDONED";
 
+export type FbaShipmentProductLine = {
+  id: string;
+  msku: string;
+  fnsku: string;
+  asin: string;
+  productName: string;
+  sku: string;
+  prepProvider: string;
+  labelType: string;
+  declaredQty: number;
+  shippedQty: number;
+  receivedQty: number;
+};
+
 export type FbaShipmentRecord = {
   id: string;
   shipmentId: string;
   staNo: string;
   store: string;
+  planId?: string;
   planNo: string;
   mskuCount: number;
   totalQty: number;
@@ -92,6 +108,17 @@ export type FbaShipmentRecord = {
   currentStep: StaWizardStep;
   hasStaTask: boolean;
   updatedAt: string;
+  referenceId?: string;
+  marketplace?: string;
+  shipmentName?: string;
+  creator?: string;
+  createdAt?: string;
+  labelType?: string;
+  shippingAddress?: string;
+  remark?: string;
+  transportType?: string;
+  storeCode?: string;
+  products?: FbaShipmentProductLine[];
 };
 
 const fbaShipmentStatusLabels: Record<FbaShipmentStatusCode, string> = {
@@ -198,7 +225,8 @@ function FbaShipmentStatusBadge({ status }: { status: FbaShipmentStatusCode }) {
   );
 }
 
-const tableHeadCell = "whitespace-nowrap px-3 py-3 font-medium";
+const tableHeadCell =
+  "sticky top-0 z-10 whitespace-nowrap border-b border-border bg-bg-page px-3 py-3 font-medium";
 
 const countryFilterOptions: SelectOption[] = [
   { label: "美国", value: "us" },
@@ -403,6 +431,8 @@ export const initialStaTaskRecords: StaTaskRecord[] = [
   },
   {
     id: "sta-002",
+    planId: "sp-023",
+    planNo: "SP202603230023",
     staNo: "STA-20260322-002",
     shipmentNo: "FBA18T6Q4W9",
     skuCount: 5,
@@ -437,8 +467,8 @@ export const initialStaTaskRecords: StaTaskRecord[] = [
     staNo: "STA-20260428-001",
     taskName: "STA (04/28/2026 02:56 PM)",
     shipmentNo: "FBA15LQGJ5LF",
-    skuCount: 3,
-    totalQty: 19,
+    skuCount: 31,
+    totalQty: 960,
     marketplace: "CA",
     store: "AMZ-CA-05店",
     sourceWarehouse: "义乌发货仓",
@@ -567,13 +597,56 @@ export const initialStaTaskRecords: StaTaskRecord[] = [
   },
 ];
 
+const mockLegacyFbaProducts: FbaShipmentProductLine[] = [
+  {
+    id: "legacy-line-1",
+    msku: "BD-05-OS40171-4",
+    fnsku: "X004H77XVH",
+    asin: "B0DNTH2SF2",
+    productName: "氧传感器234-5038+2...",
+    sku: "OS40171-4",
+    prepProvider: "卖家",
+    labelType: "卖家自己贴标签",
+    declaredQty: 10,
+    shippedQty: 10,
+    receivedQty: 10,
+  },
+  {
+    id: "legacy-line-2",
+    msku: "BD-05-OS40171-4",
+    fnsku: "X004H77XVH",
+    asin: "B0DNTH2SF2",
+    productName: "氧传感器234-5038+2...",
+    sku: "OS40171-4",
+    prepProvider: "卖家",
+    labelType: "卖家自己贴标签",
+    declaredQty: 10,
+    shippedQty: 10,
+    receivedQty: 10,
+  },
+  {
+    id: "legacy-line-3",
+    msku: "BD-05-OS40171-4",
+    fnsku: "X004H77XVH",
+    asin: "B0DNTH2SF2",
+    productName: "氧传感器234-5038+2...",
+    sku: "OS40171-4",
+    prepProvider: "卖家",
+    labelType: "卖家自己贴标签",
+    declaredQty: 10,
+    shippedQty: 10,
+    receivedQty: 10,
+  },
+];
+
 export const initialFbaShipmentRecords: FbaShipmentRecord[] = [
   {
     id: "fba-001",
     shipmentId: "FBA19CHTHLKB",
     staNo: "STA-20260322-002",
     store: "AMZ-CA-001",
-    planNo: "PLN-20260322-002",
+    planId: "sp-023",
+    planNo: "SP202603230023",
     mskuCount: 5,
     totalQty: 420,
     destinationFc: "YYZ4",
@@ -589,7 +662,8 @@ export const initialFbaShipmentRecords: FbaShipmentRecord[] = [
     shipmentId: "FBA18T6Q4W9",
     staNo: "STA-20260322-002",
     store: "AMZ-CA-001",
-    planNo: "PLN-20260322-002",
+    planId: "sp-023",
+    planNo: "SP202603230023",
     mskuCount: 5,
     totalQty: 420,
     destinationFc: "LAN2",
@@ -615,6 +689,88 @@ export const initialFbaShipmentRecords: FbaShipmentRecord[] = [
     currentStep: "配送服务",
     hasStaTask: true,
     updatedAt: "2026-03-21 18:36",
+  },
+  {
+    id: "fba-004",
+    shipmentId: "FBA195K13S7G",
+    staNo: "-",
+    store: "AMZ-CA-05店",
+    planNo: "-",
+    mskuCount: 3,
+    totalQty: 30,
+    destinationFc: "XLX7",
+    boxMode: "先分仓再装箱",
+    shipmentStatus: "RECEIVING",
+    completionStatus: "进行中",
+    currentStep: "商品装箱",
+    hasStaTask: false,
+    updatedAt: "2026-04-25 16:07",
+    referenceId: "6KHVPYPS",
+    marketplace: "CA",
+    shipmentName: "FBA (04/24/2026 01:58)-XLX7",
+    creator: "张三",
+    createdAt: "2026-04-25 16:07",
+    labelType: "卖家自己贴标签",
+    shippingAddress:
+      "Speed Winner, 301 Room, No.374, huangyuan road, jiangdong street, yiwu, Zhejiang, yiwu, Zhejiang, 322000, CN, 19906576321",
+    remark: "XXX备注内容XXX",
+    transportType: "海运",
+    storeCode: "Shenghan店铺编码XXX",
+    products: mockLegacyFbaProducts,
+  },
+  {
+    id: "fba-005",
+    shipmentId: "FBA18T6Q8K2",
+    staNo: "-",
+    store: "AMZ-US-028",
+    planNo: "-",
+    mskuCount: 2,
+    totalQty: 180,
+    destinationFc: "ONT8",
+    boxMode: "先装箱再分仓",
+    shipmentStatus: "CLOSED",
+    completionStatus: "已完成",
+    currentStep: "商品装箱",
+    hasStaTask: false,
+    updatedAt: "2026-03-15 11:20",
+    referenceId: "8PLM2QRT",
+    marketplace: "US",
+    shipmentName: "FBA (03/14/2026 09:15)-ONT8",
+    creator: "李四",
+    createdAt: "2026-03-14 09:15",
+    labelType: "亚马逊贴标签",
+    shippingAddress: "Yi Wu Nan Sheng Dian Zi Shang Wu You Xian Gong Si, yiwu, Zhejiang, 322000, CN",
+    remark: "-",
+    transportType: "空运",
+    storeCode: "Shenghan-US-028",
+    products: mockLegacyFbaProducts.slice(0, 2),
+  },
+  {
+    id: "fba-006",
+    shipmentId: "FBA17K9M2P1X",
+    staNo: "-",
+    store: "AMZ-CA-001",
+    planNo: "-",
+    mskuCount: 1,
+    totalQty: 96,
+    destinationFc: "YYZ4",
+    boxMode: "先分仓再装箱",
+    shipmentStatus: "SHIPPED",
+    completionStatus: "进行中",
+    currentStep: "商品装箱",
+    hasStaTask: false,
+    updatedAt: "2026-02-28 08:42",
+    referenceId: "3WNH9KLP",
+    marketplace: "CA",
+    shipmentName: "FBA (02/27/2026 04:30)-YYZ4",
+    creator: "王五",
+    createdAt: "2026-02-27 16:30",
+    labelType: "卖家自己贴标签",
+    shippingAddress: "Speed Winner, 301 Room, No.374, huangyuan road, jiangdong street, yiwu, Zhejiang, 322000, CN",
+    remark: "旧版货件同步数据",
+    transportType: "海运",
+    storeCode: "Shenghan-CA-001",
+    products: [mockLegacyFbaProducts[0]],
   },
 ];
 
@@ -1144,11 +1300,196 @@ function KeywordSearchField({
   );
 }
 
-function ProductImagePlaceholder() {
+/** 列表内嵌商品行：更紧凑的行高，便于单屏展示更多数据 */
+const listProductRowCell = "whitespace-nowrap px-3 py-1.5 align-middle text-small leading-snug";
+const listProductRowNameCell =
+  "max-w-[220px] truncate px-3 py-1.5 align-middle text-small leading-snug";
+
+function ListProductImagePlaceholder() {
   return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-sm border border-dashed border-border bg-bg-page text-text-muted">
-      <ImageIcon aria-hidden="true" className="h-4 w-4" />
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-dashed border-border bg-bg-page text-text-muted">
+      <ImageIcon aria-hidden="true" className="h-3.5 w-3.5" />
     </div>
+  );
+}
+
+const LIST_PRODUCTS_INITIAL_VISIBLE = 5;
+
+type StaListProductRow = {
+  id: string;
+  msku: string;
+  fnsku: string;
+  asin: string;
+  productName: string;
+  sku: string;
+  declaredQty: number;
+};
+
+type FbaListProductRow = StaListProductRow & {
+  shippedQty: number;
+  receivedQty: number;
+  declareShipDiff: number;
+  shipReceiveDiff: number;
+  declareReceiveDiff: number;
+};
+
+function StaListProductTableRow({ product }: { product: StaListProductRow }) {
+  return (
+    <tr className="bg-white">
+      <td className={listProductRowCell} />
+      <td className={listProductRowCell}>
+        <ListProductImagePlaceholder />
+      </td>
+      <td className={listProductRowCell}>{product.msku}</td>
+      <td className={listProductRowCell}>{product.fnsku}</td>
+      <td className={listProductRowCell}>{product.asin}</td>
+      <td className={listProductRowNameCell} title={product.productName}>
+        {product.productName}
+      </td>
+      <td className={listProductRowCell}>{product.sku}</td>
+      <td className={listProductRowCell}>{product.declaredQty}</td>
+    </tr>
+  );
+}
+
+function FbaListProductTableRow({ product }: { product: FbaListProductRow }) {
+  return (
+    <tr className="bg-white">
+      <td className={listProductRowCell} />
+      <td className={listProductRowCell}>
+        <ListProductImagePlaceholder />
+      </td>
+      <td className={listProductRowCell}>{product.msku}</td>
+      <td className={listProductRowCell}>{product.fnsku}</td>
+      <td className={listProductRowCell}>{product.asin}</td>
+      <td className={listProductRowNameCell} title={product.productName}>
+        {product.productName}
+      </td>
+      <td className={listProductRowCell}>{product.sku}</td>
+      <td className={listProductRowCell}>{product.declaredQty}</td>
+      <td className={listProductRowCell}>{product.shippedQty}</td>
+      <td className={listProductRowCell}>{product.receivedQty}</td>
+      <td className={listProductRowCell}>{product.declareShipDiff}</td>
+      <td className={listProductRowCell}>{product.shipReceiveDiff}</td>
+      <td className={listProductRowCell}>{product.declareReceiveDiff}</td>
+    </tr>
+  );
+}
+
+function buildStaListProducts(record: StaTaskRecord): StaListProductRow[] {
+  const count = Math.max(record.skuCount, record.products?.length ?? 0, 1);
+  const template = record.products?.[0] ?? mockStaDetailProducts[0];
+
+  if (record.products && record.products.length >= count) {
+    return record.products.slice(0, count).map((product) => ({
+      id: product.id,
+      msku: product.msku,
+      fnsku: product.fnsku,
+      asin: product.asin,
+      productName: product.productName,
+      sku: product.sku,
+      declaredQty: product.declaredQty,
+    }));
+  }
+
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${record.id}-list-product-${index}`,
+    msku: template.msku,
+    fnsku: template.fnsku,
+    asin: template.asin,
+    productName: index === 0 ? "燃油宝成品 SP2113H" : `${template.productName} ${index + 1}`,
+    sku: template.sku,
+    declaredQty: Math.max(1, Math.round(record.totalQty / count)),
+  }));
+}
+
+function buildFbaListProducts(record: FbaShipmentRecord): FbaListProductRow[] {
+  const count = Math.max(record.mskuCount, record.products?.length ?? 0, 1);
+  const template = record.products?.[0];
+
+  if (record.products && record.products.length >= count) {
+    return record.products.slice(0, count).map((product, index) => ({
+      id: product.id,
+      msku: product.msku,
+      fnsku: product.fnsku,
+      asin: product.asin,
+      productName: product.productName,
+      sku: product.sku,
+      declaredQty: product.declaredQty,
+      shippedQty: product.shippedQty,
+      receivedQty: product.receivedQty,
+      declareShipDiff: index === 0 ? 2 : 0,
+      shipReceiveDiff: index === 0 ? 1 : 0,
+      declareReceiveDiff: index === 0 ? 1 : 0,
+    }));
+  }
+
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${record.id}-list-product-${index}`,
+    msku: "SYJN-FS23-00074042-002",
+    fnsku: "X004UGWLN5",
+    asin: "B0FRSLHZXS",
+    productName: index === 0 ? "燃油宝成品 SP2113H" : `燃油宝成品 SP2113H ${index + 1}`,
+    sku: "JN-FS23-00074042",
+    declaredQty: Math.max(1, Math.round(record.totalQty / count)),
+    shippedQty: index === 0 ? 8 : 0,
+    receivedQty: index === 0 ? 8 : 0,
+    declareShipDiff: index === 0 ? 2 : 0,
+    shipReceiveDiff: index === 0 ? 1 : 0,
+    declareReceiveDiff: index === 0 ? 1 : 0,
+  }));
+}
+
+function useProductExpandState() {
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+
+  function isExpanded(id: string) {
+    return expandedIds.includes(id);
+  }
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  }
+
+  return { isExpanded, toggleExpanded };
+}
+
+function ExpandProductsRow({
+  remainingCount,
+  expanded,
+  onToggle,
+  colSpan,
+}: {
+  remainingCount: number;
+  expanded: boolean;
+  onToggle: () => void;
+  colSpan: number;
+}) {
+  if (remainingCount <= 0) {
+    return null;
+  }
+
+  return (
+    <tr>
+      <td colSpan={colSpan} className="border-t border-border bg-white px-3 py-1.5 text-center text-small">
+        <button
+          type="button"
+          className="border-0 bg-transparent text-small text-primary hover:underline"
+          onClick={onToggle}
+        >
+          {expanded ? (
+            "收起"
+          ) : (
+            <span className="inline-flex items-center justify-center gap-1">
+              展开剩余{remainingCount}个商品
+              <ChevronsDown aria-hidden="true" className="h-4 w-4" />
+            </span>
+          )}
+        </button>
+      </td>
+    </tr>
   );
 }
 
@@ -1232,7 +1573,7 @@ function ActionDropdown({
   );
 }
 
-function getShippingPlanActionOptions(status: ShippingPlanStatus): SelectOption[] {
+function getShippingPlanActionOptions(status: ShippingPlanStatus, hasStaTask = false): SelectOption[] {
   switch (status) {
     case "待提交":
       return [
@@ -1251,7 +1592,7 @@ function getShippingPlanActionOptions(status: ShippingPlanStatus): SelectOption[
         { label: "生成备货单", value: "create-stockup" },
         { label: "整单已处理", value: "order-processed" },
         { label: "产品已处理", value: "product-processed" },
-        { label: "创建STA任务", value: "create-sta" },
+        ...(hasStaTask ? [] : [{ label: "创建STA任务", value: "create-sta" }]),
       ];
     case "已驳回":
       return [
@@ -1269,16 +1610,21 @@ function getShippingPlanActionOptions(status: ShippingPlanStatus): SelectOption[
 function ShippingPlanOperationCell({
   record,
   onAction,
+  onViewStaTask,
 }: {
   record: ShippingPlanRecord;
   onAction?: (action: string, record: ShippingPlanRecord) => void;
+  onViewStaTask?: (record: ShippingPlanRecord) => void;
 }) {
-  const options = getShippingPlanActionOptions(record.documentStatus);
+  const options = getShippingPlanActionOptions(record.documentStatus, record.hasStaTask);
 
   return (
     <td className="whitespace-nowrap px-3 py-3">
       <div className="flex flex-nowrap items-center justify-end gap-3">
         <ActionLinkButton>详情</ActionLinkButton>
+        {record.hasStaTask && record.staNo ? (
+          <ActionLinkButton onClick={() => onViewStaTask?.(record)}>查看STA</ActionLinkButton>
+        ) : null}
         {options.length > 0 ? (
           <ActionDropdown options={options} onSelect={(value) => onAction?.(value, record)} />
         ) : null}
@@ -1293,7 +1639,7 @@ const actionSelectOptions = [
   { label: "取消", value: "cancel" },
 ];
 
-function StaTaskOperationCell({
+function StaTaskGroupHeaderActions({
   record,
   onAction,
   onView,
@@ -1303,16 +1649,20 @@ function StaTaskOperationCell({
   onView?: (record: StaTaskRecord) => void;
 }) {
   return (
-    <td className="whitespace-nowrap px-3 py-3">
-      <div className="flex flex-nowrap items-center justify-end gap-3">
-        <ActionLinkButton onClick={() => onView?.(record)}>详情</ActionLinkButton>
-        <ActionDropdown options={actionSelectOptions} onSelect={(value) => onAction?.(value, record)} />
-      </div>
-    </td>
+    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+      <Badge tone={staStatusTone(record.status)} className="shrink-0">
+        {record.status}
+      </Badge>
+      <Badge tone="processing" className="shrink-0">
+        {record.currentStep}
+      </Badge>
+      <ActionLinkButton onClick={() => onView?.(record)}>详情</ActionLinkButton>
+      <ActionDropdown options={actionSelectOptions} onSelect={(value) => onAction?.(value, record)} />
+    </div>
   );
 }
 
-function FbaShipmentOperationCell({
+function FbaShipmentGroupHeaderActions({
   record,
   onAction,
   onView,
@@ -1322,31 +1672,21 @@ function FbaShipmentOperationCell({
   onView?: (record: FbaShipmentRecord) => void;
 }) {
   return (
-    <td className="whitespace-nowrap px-3 py-3">
-      <div className="flex flex-nowrap items-center justify-end gap-3">
-        <ActionLinkButton onClick={() => onView?.(record)}>详情</ActionLinkButton>
+    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+      <FbaShipmentStatusBadge status={record.shipmentStatus} />
+      <Badge tone={fbaCompletionStatusTone(record.completionStatus)} className="shrink-0">
+        {record.completionStatus}
+      </Badge>
+      {record.hasStaTask && record.currentStep !== "选择发货商品" ? (
+        <Badge tone="processing" className="shrink-0">
+          {record.currentStep}
+        </Badge>
+      ) : null}
+      <ActionLinkButton onClick={() => onView?.(record)}>详情</ActionLinkButton>
+      {record.hasStaTask ? (
         <ActionDropdown options={actionSelectOptions} onSelect={(value) => onAction?.(value, record)} />
-      </div>
-    </td>
-  );
-}
-
-function TableOperationCell() {
-  return (
-    <td className="whitespace-nowrap px-3 py-3">
-      <div className="flex flex-nowrap items-center justify-end gap-3">
-        <ActionLinkButton>详情</ActionLinkButton>
-        <ActionDropdown options={actionSelectOptions} />
-      </div>
-    </td>
-  );
-}
-
-function TableStatusCell({ children }: { children: ReactNode }) {
-  return (
-    <td className="min-w-[240px] whitespace-nowrap px-3 py-3">
-      <div className="flex flex-nowrap items-center justify-end gap-2">{children}</div>
-    </td>
+      ) : null}
+    </div>
   );
 }
 
@@ -1570,7 +1910,7 @@ function ScrollableTablePanel({
 }) {
   return (
     <div className="overflow-hidden rounded-md border border-border">
-      <div className="overflow-x-auto">{children}</div>
+      <div className="max-h-[calc(100dvh-15.5rem)] overflow-auto overscroll-contain">{children}</div>
       {tableFooter}
       <PrototypePagination {...pagination} />
     </div>
@@ -1635,9 +1975,16 @@ const shippingPlanTimeTypeOptions: SelectOption[] = [
 
 type ShippingPlanStatus = "待提交" | "待审批" | "待处理" | "已完成" | "已驳回" | "已作废";
 
+export type ShippingPlanFlowStatus = "none" | "sta_draft" | "sta_in_progress" | "fba_created";
+
 export type ShippingPlanRecord = {
   id: string;
   planNo: string;
+  hasStaTask?: boolean;
+  staId?: string;
+  staNo?: string;
+  fbaShipmentCount?: number;
+  flowStatus?: ShippingPlanFlowStatus;
   platform: string;
   store: string;
   shipWarehouseType: string;
@@ -1713,6 +2060,18 @@ const shippingPlanMockStores = [
 const shippingPlanMockCreators = ["张三", "李四", "王五", "赵六", "陈七"] as const;
 const shippingPlanMockRemarks = ["优先处理", "加急", "驳回后修改", "常规发货", "-"] as const;
 
+const shippingPlanRecordOverrides: Record<string, Partial<ShippingPlanRecord>> = {
+  "sp-023": {
+    hasStaTask: true,
+    staId: "sta-002",
+    staNo: "STA-20260322-002",
+    fbaShipmentCount: 2,
+    flowStatus: "fba_created",
+    deliveryMode: "FBA",
+    documentStatus: "待处理",
+  },
+};
+
 function createShippingPlanMockRecords(): ShippingPlanRecord[] {
   const statuses: ShippingPlanStatus[] = ["待提交", "待审批", "待处理", "已完成", "已驳回", "已作废"];
 
@@ -1721,10 +2080,14 @@ function createShippingPlanMockRecords(): ShippingPlanRecord[] {
       const sequence = statusIndex * 10 + itemIndex + 1;
       const variant = sequence % 6;
       const day = String((sequence % 28) + 1).padStart(2, "0");
+      const id = `sp-${String(sequence).padStart(3, "0")}`;
 
       return {
-        id: `sp-${String(sequence).padStart(3, "0")}`,
+        id,
         planNo: `SP202603${day}${String(sequence).padStart(4, "0")}`,
+        hasStaTask: false,
+        fbaShipmentCount: 0,
+        flowStatus: "none" as const,
         platform: shippingPlanMockPlatforms[variant],
         store: shippingPlanMockStores[variant],
         shipWarehouseType: variant % 2 === 0 ? "实体仓" : "虚拟仓",
@@ -1746,12 +2109,13 @@ function createShippingPlanMockRecords(): ShippingPlanRecord[] {
         updatedAt: `2026-03-${day} ${String(10 + (variant % 8)).padStart(2, "0")}:${String((variant + 3) * 5 % 60).padStart(2, "0")}`,
         documentStatus,
         plannedQty: 120 * (sequence % 20 + 1),
+        ...shippingPlanRecordOverrides[id],
       };
     }),
   );
 }
 
-const shippingPlanRecords = createShippingPlanMockRecords();
+export const initialShippingPlanRecords = createShippingPlanMockRecords();
 
 function shippingPlanStatusTone(status: ShippingPlanStatus) {
   switch (status) {
@@ -1813,15 +2177,19 @@ function EstimatedShipTimeField() {
 }
 
 export function ShippingPlanPage({
+  records,
   onCreateStaTask,
+  onViewStaTask,
 }: {
+  records: ShippingPlanRecord[];
   onCreateStaTask?: (record: ShippingPlanRecord) => void;
+  onViewStaTask?: (record: ShippingPlanRecord) => void;
 }) {
   const [activeStatusTab, setActiveStatusTab] = useState("all");
-  const statusTabs = useMemo(() => buildShippingPlanStatusTabs(shippingPlanRecords), []);
+  const statusTabs = useMemo(() => buildShippingPlanStatusTabs(records), [records]);
   const filteredRecords = useMemo(
-    () => filterShippingPlanRecordsByStatusTab(shippingPlanRecords, activeStatusTab),
-    [activeStatusTab],
+    () => filterShippingPlanRecordsByStatusTab(records, activeStatusTab),
+    [records, activeStatusTab],
   );
   const {
     page,
@@ -1845,11 +2213,6 @@ export function ShippingPlanPage({
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="发货计划"
-        description="用于预览发货计划查询、审批与导出，当前页面仅展示原型交互。"
-      />
-
       <Card>
         <StatusTabs tabs={statusTabs} active={activeStatusTab} onChange={setActiveStatusTab} />
         <div className="mt-4">
@@ -1895,7 +2258,7 @@ export function ShippingPlanPage({
         </div>
       </Card>
 
-      <Card title="发货计划列表">
+      <Card>
         <ListToolbar
           primaryActions={
             <>
@@ -1943,6 +2306,7 @@ export function ShippingPlanPage({
                 <th className={tableHeadCell}>更新人/更新时间</th>
                 <th className={tableHeadCell}>单据状态</th>
                 <th className={tableHeadCell}>计划发货数量</th>
+                <th className={tableHeadCell}>关联STA/FBA</th>
                 <th className={tableHeadCell}>操作</th>
               </tr>
             </thead>
@@ -1985,11 +2349,32 @@ export function ShippingPlanPage({
                     </Badge>
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">{record.plannedQty}</td>
-                  <ShippingPlanOperationCell record={record} onAction={onCreateStaTask ? (action, item) => {
-                    if (action === "create-sta") {
-                      onCreateStaTask(item);
-                    }
-                  } : undefined} />
+                  <td className="whitespace-nowrap px-3 py-3">
+                    {record.hasStaTask ? (
+                      <div className="space-y-1">
+                        <div>
+                          STA：
+                          <ActionLinkButton onClick={() => onViewStaTask?.(record)}>
+                            {record.staNo}
+                          </ActionLinkButton>
+                        </div>
+                        {(record.fbaShipmentCount ?? 0) > 0 ? (
+                          <div className="text-text-muted">FBA货件：{record.fbaShipmentCount} 个</div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-text-muted">-</span>
+                    )}
+                  </td>
+                  <ShippingPlanOperationCell
+                    record={record}
+                    onViewStaTask={onViewStaTask}
+                    onAction={onCreateStaTask ? (action, item) => {
+                      if (action === "create-sta") {
+                        onCreateStaTask(item);
+                      }
+                    } : undefined}
+                  />
                 </tr>
               ))}
             </tbody>
@@ -2020,6 +2405,7 @@ export function StaTaskPage({
   } = usePrototypePagination(records);
   const rowIds = useMemo(() => pagedItems.map((record) => record.id), [pagedItems]);
   const selection = useListSelection(rowIds);
+  const { isExpanded, toggleExpanded } = useProductExpandState();
   const paginationProps: PrototypePaginationProps = {
     currentPage: page,
     totalPages,
@@ -2031,11 +2417,6 @@ export function StaTaskPage({
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="STA任务"
-        description="用于预览STA任务查询、分仓生成和异常说明，当前页面仅展示原型交互。"
-      />
-
       <Card>
         <FilterBar>
           <FilterField widthClass="w-[148px]">
@@ -2072,18 +2453,11 @@ export function StaTaskPage({
         </FilterBar>
       </Card>
 
-      <Card title="STA任务列表">
+      <Card>
         <ListToolbar
           importExportActions={<Button variant="secondary" size="sm">导出装箱清单</Button>}
         />
-        <ScrollableTablePanel
-          pagination={paginationProps}
-          tableFooter={
-            <div className="border-t border-border bg-white py-2 text-center text-small text-primary">
-              展开剩余30个商品
-            </div>
-          }
-        >
+        <ScrollableTablePanel pagination={paginationProps}>
           <table className="w-full min-w-[1180px] border-collapse text-left text-small">
             <thead className="bg-bg-page text-text-muted">
               <tr>
@@ -2101,12 +2475,18 @@ export function StaTaskPage({
                 <th className={tableHeadCell}>中文品名</th>
                 <th className={tableHeadCell}>SKU</th>
                 <th className={tableHeadCell}>申报量</th>
-                <th className={`min-w-[240px] ${tableHeadCell}`}>状态</th>
-                <th className={tableHeadCell}>操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border bg-white">
-              {pagedItems.map((record, index) => (
+              {pagedItems.map((record, index) => {
+                const products = buildStaListProducts(record);
+                const expanded = isExpanded(record.id);
+                const visibleProducts = expanded
+                  ? products
+                  : products.slice(0, LIST_PRODUCTS_INITIAL_VISIBLE);
+                const remainingCount = products.length - LIST_PRODUCTS_INITIAL_VISIBLE;
+
+                return (
                 <Fragment key={record.id}>
                   <tr className={index === 0 ? "bg-primary-subtle/40" : "bg-bg-page/70"}>
                     <td className="px-3 py-3">
@@ -2116,53 +2496,46 @@ export function StaTaskPage({
                       />
                     </td>
                     <td colSpan={7} className="px-3 py-3">
-                      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                        <ActionLinkButton onClick={() => onViewStaTask?.(record)}>
-                          <span className="font-medium">
-                            {record.taskName?.trim() || record.staNo}
-                          </span>
-                        </ActionLinkButton>
-                        <span>店铺：{record.store}</span>
-                        <span>物流中心编号：SCK1/CHO1</span>
-                      </div>
-                      <div className="mt-1 text-text-muted">
-                        最近更新时间：XXX更新XXX　创建人：XXX创建人名称XXX　创建时间：XXX创建人名称XXX
+                      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                            <ActionLinkButton onClick={() => onViewStaTask?.(record)}>
+                              <span className="font-medium">
+                                {record.taskName?.trim() || record.staNo}
+                              </span>
+                            </ActionLinkButton>
+                            <span>店铺：{record.store}</span>
+                            {record.planNo ? <span>发货计划：{record.planNo}</span> : null}
+                            <span>物流中心编号：SCK1/CHO1</span>
+                          </div>
+                          <div className="mt-1 text-text-muted">
+                            最近更新时间：XXX更新XXX　创建人：XXX创建人名称XXX　创建时间：XXX创建人名称XXX
+                          </div>
+                        </div>
+                        <StaTaskGroupHeaderActions
+                          record={record}
+                          onView={onViewStaTask}
+                          onAction={(action, item) => {
+                            if (action === "edit") {
+                              onEditStaTask?.(item);
+                            }
+                          }}
+                        />
                       </div>
                     </td>
-                    <TableStatusCell>
-                      <Badge tone={staStatusTone(record.status)} className="shrink-0">
-                        {record.status}
-                      </Badge>
-                      <Badge tone="processing" className="shrink-0">
-                        {record.currentStep}
-                      </Badge>
-                    </TableStatusCell>
-                    <StaTaskOperationCell
-                      record={record}
-                      onView={onViewStaTask}
-                      onAction={(action, item) => {
-                        if (action === "edit") {
-                          onEditStaTask?.(item);
-                        }
-                      }}
-                    />
                   </tr>
-                  <tr>
-                    <td className="px-3 py-3" />
-                    <td className="px-3 py-3">
-                      <ProductImagePlaceholder />
-                    </td>
-                    <td className="px-3 py-3">SYJN-FS23-00074042-002</td>
-                    <td className="px-3 py-3">X004UGWLN5</td>
-                    <td className="px-3 py-3">B0FRSLHZXS</td>
-                    <td className="px-3 py-3">燃油宝成品SP2113H</td>
-                    <td className="px-3 py-3">JN-FS23-00074042</td>
-                    <td className="px-3 py-3">{record.totalQty / 64}</td>
-                    <td className="px-3 py-3 text-text-muted">-</td>
-                    <td className="px-3 py-3 text-text-muted">-</td>
-                  </tr>
+                  {visibleProducts.map((product) => (
+                    <StaListProductTableRow key={product.id} product={product} />
+                  ))}
+                  <ExpandProductsRow
+                    remainingCount={remainingCount}
+                    expanded={expanded}
+                    onToggle={() => toggleExpanded(record.id)}
+                    colSpan={8}
+                  />
                 </Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </ScrollableTablePanel>
@@ -2191,6 +2564,7 @@ export function FbaShipmentPage({
   } = usePrototypePagination(records);
   const rowIds = useMemo(() => pagedItems.map((record) => record.id), [pagedItems]);
   const selection = useListSelection(rowIds);
+  const { isExpanded, toggleExpanded } = useProductExpandState();
   const paginationProps: PrototypePaginationProps = {
     currentPage: page,
     totalPages,
@@ -2202,11 +2576,6 @@ export function FbaShipmentPage({
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="FBA货件"
-        description="用于预览FBA货件查询、分仓装箱、货件状态和异常说明，当前页面仅展示原型交互。"
-      />
-
       <Card>
         <FilterBar>
           <FilterField widthClass="w-[148px]">
@@ -2274,111 +2643,98 @@ export function FbaShipmentPage({
         </FilterBar>
       </Card>
 
-      <Card title="FBA货件列表">
+      <Card>
         <ListToolbar
           primaryActions={<Button variant="secondary" size="sm">同步货件</Button>}
           importExportActions={<Button variant="secondary" size="sm">导出装箱清单</Button>}
         />
-        <ScrollableTablePanel
-          pagination={paginationProps}
-          tableFooter={
-            <div className="border-t border-border bg-white py-2 text-center text-small text-primary">
-              展开剩余10个商品
-            </div>
-          }
-        >
-          <table className="w-full min-w-[1480px] border-collapse text-left text-small">
-            <thead className="bg-bg-page text-text-muted">
-              <tr>
-                <th className={`w-10 ${tableHeadCell}`}>
-                  <TableSelectAllCheckbox
-                    checked={selection.allSelected}
-                    indeterminate={selection.partiallySelected}
-                    onChange={selection.toggleAll}
-                  />
-                </th>
-                <th className={tableHeadCell}>图片</th>
-                <th className={tableHeadCell}>MSKU</th>
-                <th className={tableHeadCell}>FNSKU</th>
-                <th className={tableHeadCell}>ASIN</th>
-                <th className={tableHeadCell}>中文品名</th>
-                <th className={tableHeadCell}>SKU</th>
-                <th className={tableHeadCell}>申报量</th>
-                <th className={tableHeadCell}>已发货</th>
-                <th className={tableHeadCell}>签收量</th>
-                <th className={tableHeadCell}>申发差异</th>
-                <th className={tableHeadCell}>收发差异</th>
-                <th className={tableHeadCell}>申收差异</th>
-                <th className={`min-w-[240px] ${tableHeadCell}`}>状态</th>
-                <th className={tableHeadCell}>操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border bg-white">
-              {pagedItems.map((record, index) => (
-                <Fragment key={record.id}>
-                  <tr className={index === 0 ? "bg-primary-subtle/40" : "bg-bg-page/70"}>
-                    <td className="px-3 py-3">
-                      <TableRowCheckbox
-                        checked={selection.isSelected(record.id)}
-                        onChange={() => selection.toggleRow(record.id)}
-                      />
-                    </td>
-                    <td colSpan={12} className="px-3 py-3">
-                      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                        <span className="inline-flex items-center gap-2 font-medium text-primary">
-                          {record.shipmentId}
-                          {record.hasStaTask ? <StaTaskBadge /> : null}
-                        </span>
-                        <span>STA任务：{record.hasStaTask ? record.staNo : "-"}</span>
-                        <span>物流中心编号：{record.destinationFc}</span>
-                        <span>店铺：{record.store}</span>
-                        <span>Reference Id：6KHVPYPS</span>
-                      </div>
-                      <div className="mt-1 text-text-muted">
-                        店铺：Shenghan店铺编码XXX　创建人：XXX　创建时间：2026-04-29 17:11　运输类型：XXX
-                      </div>
-                    </td>
-                    <TableStatusCell>
-                      <FbaShipmentStatusBadge status={record.shipmentStatus} />
-                      {record.hasStaTask && record.currentStep !== "选择发货商品" ? (
-                        <Badge tone="processing" className="shrink-0">
-                          {record.currentStep}
-                        </Badge>
-                      ) : null}
-                    </TableStatusCell>
-                    <FbaShipmentOperationCell
-                      record={record}
-                      onView={onViewFbaShipment}
-                      onAction={(action, item) => {
-                        if (action === "edit") {
-                          onEditFbaShipment?.(item);
-                        }
-                      }}
+        <ScrollableTablePanel pagination={paginationProps}>
+            <table className="w-full min-w-[1280px] border-collapse text-left text-small">
+              <thead className="bg-bg-page text-text-muted">
+                <tr>
+                  <th className={`w-10 ${tableHeadCell}`}>
+                    <TableSelectAllCheckbox
+                      checked={selection.allSelected}
+                      indeterminate={selection.partiallySelected}
+                      onChange={selection.toggleAll}
                     />
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-3" />
-                    <td className="px-3 py-3">
-                      <ProductImagePlaceholder />
-                    </td>
-                    <td className="px-3 py-3">SYJN-FS23-00074042-002</td>
-                    <td className="px-3 py-3">X004UGWLN5</td>
-                    <td className="px-3 py-3">B0FRSLHZXS</td>
-                    <td className="px-3 py-3">燃油宝成品SP2113H</td>
-                    <td className="px-3 py-3">JN-FS23-00074042</td>
-                    <td className="px-3 py-3">10</td>
-                    <td className="px-3 py-3">{index === 0 ? 8 : 0}</td>
-                    <td className="px-3 py-3">{index === 0 ? 8 : 0}</td>
-                    <td className="px-3 py-3">{index === 0 ? 2 : 0}</td>
-                    <td className="px-3 py-3">{index === 0 ? 1 : 0}</td>
-                    <td className="px-3 py-3">{index === 0 ? 1 : 0}</td>
-                    <td className="px-3 py-3 text-text-muted">-</td>
-                    <td className="px-3 py-3 text-text-muted">-</td>
-                  </tr>
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
+                  </th>
+                  <th className={tableHeadCell}>图片</th>
+                  <th className={tableHeadCell}>MSKU</th>
+                  <th className={tableHeadCell}>FNSKU</th>
+                  <th className={tableHeadCell}>ASIN</th>
+                  <th className={tableHeadCell}>中文品名</th>
+                  <th className={tableHeadCell}>SKU</th>
+                  <th className={tableHeadCell}>申报量</th>
+                  <th className={tableHeadCell}>已发货</th>
+                  <th className={tableHeadCell}>签收量</th>
+                  <th className={tableHeadCell}>申发差异</th>
+                  <th className={tableHeadCell}>收发差异</th>
+                  <th className={tableHeadCell}>申收差异</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border bg-white">
+                {pagedItems.map((record, index) => {
+                  const products = buildFbaListProducts(record);
+                  const expanded = isExpanded(record.id);
+                  const visibleProducts = expanded
+                    ? products
+                    : products.slice(0, LIST_PRODUCTS_INITIAL_VISIBLE);
+                  const remainingCount = products.length - LIST_PRODUCTS_INITIAL_VISIBLE;
+
+                  return (
+                    <Fragment key={record.id}>
+                      <tr className={index === 0 ? "bg-primary-subtle/40" : "bg-bg-page/70"}>
+                        <td className="px-3 py-3">
+                          <TableRowCheckbox
+                            checked={selection.isSelected(record.id)}
+                            onChange={() => selection.toggleRow(record.id)}
+                          />
+                        </td>
+                        <td colSpan={12} className="px-3 py-3">
+                          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                                <span className="inline-flex items-center gap-2 font-medium text-primary">
+                                  {record.shipmentId}
+                                  {record.hasStaTask ? <StaTaskBadge /> : null}
+                                </span>
+                                <span>STA任务：{record.hasStaTask ? record.staNo : "-"}</span>
+                                <span>物流中心编号：{record.destinationFc}</span>
+                                <span>店铺：{record.store}</span>
+                                <span>Reference Id：{record.referenceId ?? "6KHVPYPS"}</span>
+                              </div>
+                              <div className="mt-1 text-text-muted">
+                                店铺：{record.storeCode ?? "Shenghan店铺编码XXX"}　创建人：{record.creator ?? "XXX"}　创建时间：
+                                {record.createdAt ?? "2026-04-29 17:11"}　运输类型：{record.transportType ?? "XXX"}
+                              </div>
+                            </div>
+                            <FbaShipmentGroupHeaderActions
+                              record={record}
+                              onView={onViewFbaShipment}
+                              onAction={(action, item) => {
+                                if (action === "edit") {
+                                  onEditFbaShipment?.(item);
+                                }
+                              }}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                      {visibleProducts.map((product) => (
+                        <FbaListProductTableRow key={product.id} product={product} />
+                      ))}
+                      <ExpandProductsRow
+                        remainingCount={remainingCount}
+                        expanded={expanded}
+                        onToggle={() => toggleExpanded(record.id)}
+                        colSpan={13}
+                      />
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
         </ScrollableTablePanel>
       </Card>
     </div>

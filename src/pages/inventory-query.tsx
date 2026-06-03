@@ -16,7 +16,7 @@ import { IconActionButton } from "../components/ui/icon-action-button";
 import { Input } from "../components/ui/input";
 import { ListPageMainCard, ListPageToolbar } from "../components/ui/list-page-layout";
 import { Pagination } from "../components/ui/pagination";
-import { PageHeader } from "../components/ui/page-header";
+import { PageActions } from "../components/ui/page-header";
 import { getVisibleQuerySectionItems, hasCollapsedQuerySectionItems } from "../components/ui/query-section";
 import { Select } from "../components/ui/select";
 import {
@@ -378,15 +378,11 @@ export function InventoryQueryPage({
   return (
     <div className="space-y-page-block">
       <DemoToolbar label="列表页" items={inventoryQueryTabs} value={scenario} onChange={setScenario} />
-      <PageHeader
-        title="即时库存查询"
-        description="按货主、仓库、商品和品类组合查询当前库存结果，重点查看总数量、可用数量、预占数量和冻结数量。"
-        actions={
-          <Button variant="primary" disabled={filteredRows.length === 0} onClick={handleExport}>
-            导出
-          </Button>
-        }
-      />
+      <PageActions>
+        <Button variant="primary" disabled={filteredRows.length === 0} onClick={handleExport}>
+          导出
+        </Button>
+      </PageActions>
 
       <Card>
         <div className="query-section-grid">

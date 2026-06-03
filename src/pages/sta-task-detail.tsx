@@ -941,7 +941,6 @@ export function StaTaskDetailPage({
   const activeDetailStep = detailStep ?? (record.currentStep as StaWizardStepName);
   const stepIndex = getStaWizardStepIndex(activeDetailStep);
   const currentStepIndex = getStaWizardStepIndex(record.currentStep as StaWizardStepName);
-  const displayTitle = record.taskName?.trim() || record.staNo;
   const isDraft = record.status === "草稿";
   const canEditCurrentStep = activeDetailStep === record.currentStep;
   const canGoPreviousStep = stepIndex > 0;
@@ -960,11 +959,8 @@ export function StaTaskDetailPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="page-title">{displayTitle}</h1>
-          {isDraft ? <Badge tone="draft">草稿</Badge> : null}
-        </div>
+      <div className="flex flex-wrap items-start justify-end gap-4">
+        {isDraft ? <Badge tone="draft">草稿</Badge> : null}
         <Button variant="secondary" size="sm">
           <ScrollText aria-hidden="true" className="h-4 w-4" />
           操作日志

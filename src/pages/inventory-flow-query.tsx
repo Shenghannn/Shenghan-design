@@ -16,7 +16,7 @@ import { IconActionButton } from "../components/ui/icon-action-button";
 import { Input } from "../components/ui/input";
 import { ListPageMainCard, ListPageToolbar } from "../components/ui/list-page-layout";
 import { Pagination } from "../components/ui/pagination";
-import { PageHeader } from "../components/ui/page-header";
+import { PageActions } from "../components/ui/page-header";
 import { getVisibleQuerySectionItems, hasCollapsedQuerySectionItems } from "../components/ui/query-section";
 import { Select } from "../components/ui/select";
 import {
@@ -541,15 +541,11 @@ export function InventoryFlowQueryPage({
   return (
     <div className="space-y-page-block">
       <DemoToolbar label="列表页" items={inventoryFlowTabs} value={scenario} onChange={setScenario} />
-      <PageHeader
-        title="库存流水查询"
-        description="按操作时间、货主、仓库、商品和业务单号组合查询库存变动流水，重点查看总库存、可用库存、预占库存和冻结库存的变动前后。"
-        actions={
-          <Button variant="primary" disabled={filteredRows.length === 0} onClick={handleExport}>
-            导出
-          </Button>
-        }
-      />
+      <PageActions>
+        <Button variant="primary" disabled={filteredRows.length === 0} onClick={handleExport}>
+          导出
+        </Button>
+      </PageActions>
 
       <Card>
         <div className="query-section-grid">

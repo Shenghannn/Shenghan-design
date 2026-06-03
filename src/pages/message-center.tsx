@@ -123,15 +123,6 @@ export function MessageCenterPage({
 
   return (
     <div className="space-y-4">
-      <div className="page-header">
-        <div>
-          <div className="page-title">消息中心</div>
-          <div className="mt-2 text-body text-text-secondary">
-            统一查看审批提醒、运营通知和系统消息，支持批量标记已读与抽屉详情查看。
-          </div>
-        </div>
-      </div>
-
       <section className="page-section relative overflow-hidden p-0">
         <div className="flex min-h-[680px]">
           <aside className="flex w-[184px] shrink-0 flex-col border-r border-border bg-bg-subtle">

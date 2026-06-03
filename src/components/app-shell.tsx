@@ -15,6 +15,7 @@ import {
   LogOut,
   House,
   PackageCheck,
+  Package,
   PanelLeftClose,
   PanelLeftOpen,
   Palette,
@@ -32,6 +33,7 @@ import {
 import { SegmentedControl } from "./ui/segmented-control";
 
 type NavIconName =
+  | "product"
   | "firstLeg"
   | "shippingPlan"
   | "sta"
@@ -70,8 +72,20 @@ type NavSection = {
 
 const navigationTree: NavSection[] = [
   {
+    id: "product-management",
+    label: "产品管理",
+    icon: "product",
+    groups: [
+      {
+        id: "product-items",
+        label: "产品",
+        items: [{ id: "liangcang-sku", label: "良仓SKU资料", icon: "product" }],
+      },
+    ],
+  },
+  {
     id: "first-leg",
-    label: "物流模块",
+    label: "物流管理",
     icon: "firstLeg",
     groups: [
       {
@@ -149,6 +163,7 @@ const navigationTree: NavSection[] = [
 ];
 
 const iconMap: Record<NavIconName, LucideIcon> = {
+  product: Package,
   firstLeg: Plane,
   shippingPlan: Truck,
   sta: ClipboardList,
