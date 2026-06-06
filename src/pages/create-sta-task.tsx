@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ImageIcon, Pencil, ScrollText } from "lucide-react";
+import { AlertTriangle, ChevronDown, ImageIcon, Pencil, ScrollText } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { ImportLoadingState } from "../components/ui/import-dialog-section";
@@ -32,6 +32,26 @@ const loadingMessageMap = {
   setPackingInformation: {
     title: "正在保存并提交装箱信息，请稍候…",
     description: "系统正在调用 setPackingInformation 提交装箱明细。",
+  },
+  getShipment: {
+    title: "正在同步货件信息，请稍候…",
+    description: "系统正在调用 getShipment 获取货件基础信息。",
+  },
+  listShipmentBoxes: {
+    title: "正在同步箱规信息，请稍候…",
+    description: "系统正在调用 listShipmentBoxes 获取箱子明细。",
+  },
+  getLabels: {
+    title: "正在生成箱子标签，请稍候…",
+    description: "系统正在调用 getLabels 获取箱子标签文件。",
+  },
+  cancelStaTask: {
+    title: "正在取消当前 STA 任务，请稍候…",
+    description: "系统正在调用取消 STA 任务接口，释放当前装箱流程。",
+  },
+  recreateStaTask: {
+    title: "正在重新生成 STA 任务，请稍候…",
+    description: "系统正在使用原发货计划重新生成 STA 任务。",
   },
   generateTransportationOptions: {
     title: "正在获取承运方式与费用选项，请稍候…",
@@ -132,8 +152,8 @@ export function getStaWizardStepIndex(step: StaWizardStepName) {
 const staWizardStepDescriptions: Record<StaWizardStepName, string> = {
   选择发货商品: "维护 STA 基础信息、发货地址与申报商品，并完成分仓方案确认。",
   商品装箱: "按货件维护箱规、箱内商品与预处理信息，支持 WMS 回传装箱数据。",
-  配送服务: "配置各货件发货日期、送达窗口与承运方式，并提交配送服务。",
-  箱子标签: "下载箱唛、查看货件标签与装箱结果，确认后进入货件追踪。",
+  配送服务: "查看由其他单据回传的送达时段、发货日期与承运服务信息。",
+  箱子标签: "查看箱子标签、卡板标签与装箱明细，不在当前步骤编辑。",
   货件追踪: "维护跟踪编号并查看货件在途、签收与异常状态。",
 };
 
@@ -151,6 +171,7 @@ export type EditStaTaskContext = {
   store: string;
   status: "草稿" | "进行中" | "已发货" | "已取消" | "异常";
   currentStep: StaWizardStepName;
+  deliveryStatus?: "进行中" | "已完成";
   confirmedShipments?: ConfirmedShipment[];
   activeShipmentId?: string;
   planCreated?: boolean;
@@ -542,23 +563,13 @@ function StaProductPackingStep({
   );
 }
 
-const deliveryWindowOptions: SelectOption[] = [
-  { label: "2026-06-07 ~ 2026-06-14", value: "2026-06-07" },
-  { label: "2026-06-15 ~ 2026-06-21", value: "2026-06-15" },
-];
-
-const deliveryModeOptions: SelectOption[] = [
-  { label: "其他承运人", value: "own-carrier" },
-  { label: "亚马逊合作承运人(SEND)", value: "send" },
-];
-
-const carrierOptions: SelectOption[] = [
-  { label: "UPS", value: "ups" },
-  { label: "FedEx", value: "fedex" },
-  { label: "DHL", value: "dhl" },
-];
-
-function StaDeliveryServiceStep({ shipments }: { shipments: ConfirmedShipment[] }) {
+function StaDeliveryServiceStep({
+  shipments,
+  completed,
+}: {
+  shipments: ConfirmedShipment[];
+  completed: boolean;
+}) {
   const displayShipments =
     shipments.length > 0
       ? shipments
@@ -574,12 +585,122 @@ function StaDeliveryServiceStep({ shipments }: { shipments: ConfirmedShipment[] 
   return (
     <div className="mt-6 grid gap-6 xl:grid-cols-2">
       {displayShipments.map((shipment) => (
-        <div key={shipment.shipmentId} className="rounded-md border border-border bg-white p-5 shadow-sm">
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div key={shipment.shipmentId} className="rounded-md border border-border bg-white p-6 shadow-sm">
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div className="text-section-title font-section-title text-text-primary">
               {shipment.shipmentName ?? `FBA STA (04/23/2026 08:24)-${shipment.fcCode}`}
             </div>
-            <span className="rounded-sm border border-primary px-2 py-1 text-caption text-primary">SHIPPED</span>
+            <div className="flex items-center gap-5">
+              <span className="rounded-sm border border-primary px-2 py-1 text-caption text-primary">SHIPPED</span>
+              <button type="button" className="border-0 bg-transparent text-small text-primary hover:underline">
+                查看装箱明细&gt;&gt;
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-x-8 gap-y-4 text-small md:grid-cols-[92px_1fr]">
+            <span className="text-text-muted">货件单号</span>
+            <span>{shipment.shipmentId}</span>
+            <span className="text-text-muted">Reference ID</span>
+            <span>2D4WOETI</span>
+            <span className="text-text-muted">物流中心编码</span>
+            <span>{shipment.fcCode}</span>
+            <span className="text-text-muted">发货地址</span>
+            <span className="flex items-start justify-between gap-3">
+              <span>
+                Yi Wu Nan Sheng Dian Zi Shang Wu You Xian Gong Si, houzhai街道 tongtailu140hao,
+                yiwuweilaikejiyuan2qi 1haolou702, jinhuashi, zhejiangsheng, 322000, CN, 17706790973
+              </span>
+              <Pencil aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
+            </span>
+            <span className="text-text-muted">配送地址</span>
+            <span>{shipment.deliveryAddress}</span>
+          </div>
+
+          <div className="mt-5 grid max-w-[280px] grid-cols-3 gap-8 text-small">
+            <DetailMini label="MSKU" value="123" />
+            <DetailMini label="申报量" value="1021" />
+            <DetailMini label="箱数" value="119" />
+          </div>
+
+          <div className="mt-6 flex items-center border-l-4 border-primary pl-3 font-medium text-text-primary">送达时段</div>
+          <div className="mt-4 grid gap-y-2 text-small md:grid-cols-[92px_1fr]">
+            <span className="text-text-muted">
+              <span className="text-danger">*</span>
+              送达时段
+            </span>
+            <span>
+              {completed ? "2026-06-07 ~ 2026-06-14" : ""}
+              {completed ? (
+                <span className="ml-2 text-warning">（2026-06-07之前可在【货件追踪】步骤重新编辑）</span>
+              ) : null}
+            </span>
+          </div>
+
+          <div className="mt-6 flex items-center border-l-4 border-primary pl-3 font-medium text-text-primary">配送服务</div>
+          <div className="mt-4 grid gap-x-8 gap-y-5 text-small md:grid-cols-[92px_1fr_92px_1fr]">
+            <span className="text-text-muted">
+              <span className="text-danger">*</span>
+              发货日期
+            </span>
+            <span>{completed ? "2026-04-29" : ""}</span>
+            <span className="text-text-muted">
+              <span className="text-danger">*</span>
+              配送模式
+            </span>
+            <span>{completed ? "其他承运人" : ""}</span>
+            <span className="text-text-muted">
+              <span className="text-danger">*</span>
+              承运人类型
+            </span>
+            <span>{completed ? "小包裹快递(SPD)" : ""}</span>
+            <span className="text-text-muted">运输方式</span>
+            <span>{completed ? "海运" : ""}</span>
+            <span className="text-text-muted">
+              <span className="text-danger">*</span>
+              承运人
+            </span>
+            <span>{completed ? "其他" : ""}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StaBoxLabelDetailStep({ shipments }: { shipments: ConfirmedShipment[] }) {
+  const displayShipments =
+    shipments.length > 0
+      ? shipments
+      : [
+          {
+            shipmentId: "FBA19C34CPYD",
+            fcCode: "YYZ7",
+            deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+            shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+          },
+          {
+            shipmentId: "FBA19C34CPYE",
+            fcCode: "YYZ7",
+            deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+            shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+          },
+        ];
+
+  return (
+    <div className="mt-6 grid gap-6 xl:grid-cols-2">
+      {displayShipments.map((shipment) => (
+        <div key={shipment.shipmentId} className="rounded-md border border-border bg-white p-5 shadow-sm">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div className="text-section-title font-section-title text-text-primary">
+              {shipment.shipmentName ?? `FBA STA (04/23/2026 08:24)-${shipment.fcCode}`}
+            </div>
+            <div className="flex items-center gap-5">
+              <span className="rounded-sm border border-primary px-2 py-1 text-caption text-primary">SHIPPED</span>
+              <button type="button" className="border-0 bg-transparent text-small text-primary hover:underline">
+                查看装箱明细&gt;&gt;
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr]">
@@ -589,70 +710,50 @@ function StaDeliveryServiceStep({ shipments }: { shipments: ConfirmedShipment[] 
             <span>2D4WOETI</span>
             <span className="text-text-muted">物流中心编码</span>
             <span>{shipment.fcCode}</span>
-            <span className="text-text-muted">发货地址</span>
-            <span>Yi Wu Nan Sheng Dian Zi Shang Wu You Xian Gong Si, houzhai街道 tongtailu140hao, yiwuweilaikejiyuan2qi 1haolou702, jinhuashi, zhejiangsheng, 322000, CN, 17706790973</span>
             <span className="text-text-muted">配送地址</span>
             <span>{shipment.deliveryAddress}</span>
           </div>
 
-          <div className="mt-5 grid gap-4 md:grid-cols-[1fr_76px_76px_76px]">
-            <div>
-              <div className="mb-2 text-small text-text-secondary">SKU信息</div>
-              <div className="flex gap-2">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="relative">
-                    <ProductImagePlaceholder />
-                    <span className="absolute -right-1 -top-1 rounded-full bg-white px-1 text-caption text-text-primary shadow">5</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-4 text-small">
-                <span>共123个</span>
-                <button type="button" className="border-0 bg-transparent p-0 text-primary hover:underline">
-                  查看更多&gt;&gt;
-                </button>
-              </div>
-            </div>
-            <DetailMini label="MSKU" value="123" />
-            <DetailMini label="申报量" value="1021" />
-            <DetailMini label="箱数" value="119" />
-          </div>
-
-          <div className="mt-5 border-l-4 border-primary pl-3 font-medium text-text-primary">送达时段</div>
-          <div className="mt-3">
-            <FormFieldLabel required>送达时段</FormFieldLabel>
-            <Select defaultValue="" placeholder="请选择" options={deliveryWindowOptions} />
-          </div>
-
           <div className="mt-5 border-l-4 border-primary pl-3 font-medium text-text-primary">配送服务</div>
-          <div className="mt-3 grid gap-4 md:grid-cols-2">
-            <div>
-              <FormFieldLabel required>发货日期</FormFieldLabel>
-              <Input type="date" />
+          <div className="mt-3 grid gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr_92px_1fr]">
+            <span className="text-text-muted">
+              <span className="text-danger">*</span>
+              发货日期
+            </span>
+            <span>2026-04-29</span>
+            <span className="text-text-muted">
+              <span className="text-danger">*</span>
+              配送模式
+            </span>
+            <span>其他承运人</span>
+            <span className="text-text-muted">承运人类型</span>
+            <span>汽运零担(LTL)</span>
+            <span className="text-text-muted">运输方式</span>
+            <span>海运</span>
+            <span className="text-text-muted">
+              <span className="text-danger">*</span>
+              承运人
+            </span>
+            <span>其他</span>
+          </div>
+
+          <div className="mt-5 border-l-4 border-primary pl-3 font-medium text-text-primary">打印标签</div>
+          <div className="mt-3 space-y-4 text-small">
+            <div className="grid items-center gap-3 md:grid-cols-[92px_1fr]">
+              <span className="text-text-muted">箱子标签</span>
+              <span>热敏纸(100 x 100 mm)</span>
             </div>
-            <div>
-              <FormFieldLabel required>配送模式</FormFieldLabel>
-              <Select defaultValue="" placeholder="请选择" options={deliveryModeOptions} />
-            </div>
-            <div>
-              <FormFieldLabel required>承运人类型</FormFieldLabel>
-              <Select defaultValue="ltl" placeholder="汽运零担(LTL)" options={[{ label: "汽运零担(LTL)", value: "ltl" }]} />
-            </div>
-            <div>
-              <FormFieldLabel>运输方式</FormFieldLabel>
-              <Select
-                defaultValue=""
-                placeholder="请选择"
-                options={[
-                  { label: "陆运", value: "ground" },
-                  { label: "海运", value: "sea" },
-                  { label: "空运", value: "air" },
-                ]}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <FormFieldLabel required>承运人</FormFieldLabel>
-              <Select defaultValue="" placeholder="请选择" options={carrierOptions} />
+            <label className="ml-[104px] flex items-start gap-2 text-text-primary">
+              <input type="checkbox" readOnly className="mt-0.5" />
+              <span>
+                隐藏SHIP
+                <br />
+                FROM公司名
+              </span>
+            </label>
+            <div className="grid items-center gap-3 md:grid-cols-[92px_1fr]">
+              <span className="text-text-muted">卡板标签</span>
+              <span>热敏纸(100 x 100 mm)</span>
             </div>
           </div>
         </div>
@@ -843,7 +944,8 @@ type CreateStaTaskPageProps = {
   onPlanCreated?: (payload: StaPlanCreatedPayload) => void;
   onConfirmPlacement?: (payload: StaPlacementConfirmPayload) => void;
   onSubmitPacking?: (staNo: string) => void;
-  onSubmitDelivery?: (staNo: string) => void;
+  onRestartStaTask?: (source: CreateStaTaskSource) => void;
+  onCompleteDelivery?: (staNo: string) => void;
   onOpenPreviousStepDetail?: (staNo: string, previousStep: StaWizardStepName) => void;
   onValidationError?: (message: string) => void;
 };
@@ -856,7 +958,8 @@ export function CreateStaTaskPage({
   onPlanCreated,
   onConfirmPlacement,
   onSubmitPacking,
-  onSubmitDelivery,
+  onRestartStaTask,
+  onCompleteDelivery,
   onOpenPreviousStepDetail,
   onValidationError,
 }: CreateStaTaskPageProps) {
@@ -890,6 +993,7 @@ export function CreateStaTaskPage({
   const [placementPreviewOpen, setPlacementPreviewOpen] = useState(false);
   const [selectedPlacementId, setSelectedPlacementId] = useState("");
   const [openFeePlanId, setOpenFeePlanId] = useState<string | null>(null);
+  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
   const [skuDetailOpen, setSkuDetailOpen] = useState(false);
   const [skuDetailShipmentNo, setSkuDetailShipmentNo] = useState("");
   const [staCreated, setStaCreated] = useState(editContext?.planCreated ?? false);
@@ -965,7 +1069,10 @@ export function CreateStaTaskPage({
 
     setActionLoading(true);
     try {
-      await runPrototypeAsyncFlow(["setPackingInformation", "getInboundOperationStatus"], setLoadingStep);
+      await runPrototypeAsyncFlow(
+        ["setPackingInformation", "getInboundOperationStatus", "getShipment", "listShipmentBoxes", "getLabels"],
+        setLoadingStep,
+      );
       const staNo = editContext?.staNo ?? (resolvedStaTaskName || buildStaNo());
       onSubmitPacking?.(staNo);
       setWizardStepIndex(2);
@@ -975,7 +1082,38 @@ export function CreateStaTaskPage({
     }
   }
 
-  async function handleSubmitDelivery() {
+  async function confirmRestartStaTask() {
+    if (actionLoading) {
+      return;
+    }
+
+    setRestartConfirmOpen(false);
+    setActionLoading(true);
+    try {
+      await runPrototypeAsyncFlow(["cancelStaTask", "getInboundOperationStatus", "recreateStaTask"], setLoadingStep);
+      const restartSource: CreateStaTaskSource = {
+        planId: source?.planId ?? editContext?.planId ?? "",
+        planNo: source?.planNo ?? editContext?.planNo ?? editContext?.staNo ?? "STA-RESTART",
+        store: storeValue,
+      };
+      if (onRestartStaTask && restartSource.planId) {
+        onRestartStaTask(restartSource);
+        return;
+      }
+
+      setWizardStepIndex(0);
+      setConfirmedShipments([]);
+      setActiveShipmentId("");
+      setStaCreated(false);
+      setResolvedStaTaskName("");
+      setPlacementPreviewOpen(false);
+    } finally {
+      setLoadingStep(null);
+      setActionLoading(false);
+    }
+  }
+
+  async function handleCompleteDeliveryForDemo() {
     if (actionLoading) {
       return;
     }
@@ -987,7 +1125,7 @@ export function CreateStaTaskPage({
         setLoadingStep,
       );
       const staNo = editContext?.staNo ?? (resolvedStaTaskName || buildStaNo());
-      onSubmitDelivery?.(staNo);
+      onCompleteDelivery?.(staNo);
       setWizardStepIndex(3);
     } finally {
       setLoadingStep(null);
@@ -1229,6 +1367,7 @@ export function CreateStaTaskPage({
 
   const prepEditTitle =
     prepEditTargetIds.length > 1 ? "批量编辑预处理提供方/标签类型" : "编辑预处理提供方/标签类型";
+  const deliveryStepCompleted = editContext?.deliveryStatus === "已完成";
 
   const wizardFooter = (
     <div className="mt-6 flex flex-wrap items-center justify-center gap-3 border-t border-border pt-6">
@@ -1238,12 +1377,27 @@ export function CreateStaTaskPage({
         </Button>
       ) : null}
       {wizardStepIndex === 1 ? (
-        <Button variant="primary" size="sm" onClick={handleSubmitPacking} disabled={actionLoading}>
-          提交装箱并继续
-        </Button>
+        <>
+          <Button variant="secondary" size="sm" onClick={() => setRestartConfirmOpen(true)} disabled={actionLoading}>
+            重新开始
+          </Button>
+          <Button variant="primary" size="sm" onClick={handleSubmitPacking} disabled={actionLoading}>
+            提交装箱并继续
+          </Button>
+        </>
       ) : wizardStepIndex === 2 ? (
-        <Button variant="primary" size="sm" onClick={handleSubmitDelivery} disabled={actionLoading}>
-          提交配送服务
+        deliveryStepCompleted ? (
+          <Button variant="primary" size="sm" onClick={() => setWizardStepIndex(3)} disabled={actionLoading}>
+            下一步
+          </Button>
+        ) : (
+          <Button variant="primary" size="sm" onClick={handleCompleteDeliveryForDemo} disabled={actionLoading}>
+            手动完成配送服务
+          </Button>
+        )
+      ) : wizardStepIndex === 3 ? (
+        <Button variant="primary" size="sm" onClick={() => setWizardStepIndex(4)} disabled={actionLoading}>
+          下一步
         </Button>
       ) : wizardStepIndex === 0 ? (
         <>
@@ -1499,7 +1653,12 @@ export function CreateStaTaskPage({
           </>
         ) : wizardStepIndex === 2 ? (
           <>
-            <StaDeliveryServiceStep shipments={confirmedShipments} />
+            <StaDeliveryServiceStep shipments={confirmedShipments} completed={deliveryStepCompleted} />
+            {wizardFooter}
+          </>
+        ) : wizardStepIndex === 3 ? (
+          <>
+            <StaBoxLabelDetailStep shipments={confirmedShipments} />
             {wizardFooter}
           </>
         ) : (
@@ -1734,6 +1893,38 @@ export function CreateStaTaskPage({
           />
         ) : null}
       </Modal>
+
+      {restartConfirmOpen ? (
+        <div className="fixed inset-0 z-[70] bg-black/30">
+          <div className="flex min-h-full items-center justify-center p-section">
+            <div className="w-full max-w-[560px] rounded-md border border-border bg-white px-8 py-7 shadow-lg">
+              <div className="flex gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning text-white">
+                  <AlertTriangle aria-hidden="true" className="h-6 w-6" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[22px] font-semibold leading-tight text-text-primary">确定重新开始?</div>
+                  <p className="mt-5 text-body leading-relaxed text-text-secondary">
+                    确定后会取消当前任务，重新生成STA任务。
+                  </p>
+                  <div className="mt-10 flex justify-end gap-4">
+                    <div className="min-w-[88px]">
+                      <Button variant="secondary" size="sm" onClick={() => setRestartConfirmOpen(false)}>
+                        取消
+                      </Button>
+                    </div>
+                    <div className="min-w-[88px]">
+                      <Button variant="primary" size="sm" onClick={confirmRestartStaTask}>
+                        确定
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <Modal
         open={skuDetailOpen}

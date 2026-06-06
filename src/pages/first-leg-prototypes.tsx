@@ -1,10 +1,12 @@
 import { Fragment, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronsDown, Ellipsis, ImageIcon, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronsDown, Ellipsis, ImageIcon, Search } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { DateRangePicker } from "../components/ui/date-range-picker";
+import type { FloatingAlertInput } from "../components/ui/floating-alert";
+import { Modal } from "../components/ui/modal";
 import { Select, type SelectOption } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 
@@ -1589,7 +1591,6 @@ function getShippingPlanActionOptions(status: ShippingPlanStatus, hasStaTask = f
     case "待处理":
       return [
         { label: "作废", value: "void" },
-        { label: "生成备货单", value: "create-stockup" },
         { label: "整单已处理", value: "order-processed" },
         { label: "产品已处理", value: "product-processed" },
         ...(hasStaTask ? [] : [{ label: "创建STA任务", value: "create-sta" }]),
@@ -2008,6 +2009,30 @@ export type ShippingPlanRecord = {
   plannedQty: number;
 };
 
+type StockupGenerationSuccessItem = {
+  id: string;
+  planNo: string;
+  stockOrderNo: string;
+  store: string;
+  receiveWarehouse: string;
+  qty: number;
+};
+
+type StockupGenerationFailureItem = {
+  id: string;
+  planNo: string;
+  store: string;
+  receiveWarehouse: string;
+  qty: number;
+  reason: string;
+};
+
+type StockupGenerationResult = {
+  selectedCount: number;
+  successItems: StockupGenerationSuccessItem[];
+  failureItems: StockupGenerationFailureItem[];
+};
+
 const shippingPlanStatusTabDefinitions: Array<{
   label: string;
   value: string;
@@ -2134,6 +2159,160 @@ function shippingPlanStatusTone(status: ShippingPlanStatus) {
   }
 }
 
+function buildStockupGenerationResult(records: ShippingPlanRecord[]): StockupGenerationResult {
+  const successItems: StockupGenerationSuccessItem[] = [];
+  const failureItems: StockupGenerationFailureItem[] = [];
+
+  records.forEach((record, index) => {
+    if (index % 2 === 1) {
+      failureItems.push({
+        id: `${record.id}-failure`,
+        planNo: record.planNo,
+        store: record.store,
+        receiveWarehouse: record.receiveWarehouse,
+        qty: record.plannedQty,
+        reason: index % 4 === 1
+          ? "SKU 未维护第三方仓映射，无法生成备货单"
+          : "收货仓库三方仓编码缺失，请维护仓库资料后重试",
+      });
+      return;
+    }
+
+    successItems.push({
+      id: `${record.id}-success`,
+      planNo: record.planNo,
+      stockOrderNo: record.relatedStockOrderNo === "-" ? `STO-${record.id.toUpperCase()}` : record.relatedStockOrderNo,
+      store: record.store,
+      receiveWarehouse: record.receiveWarehouse,
+      qty: record.plannedQty,
+    });
+  });
+
+  return {
+    selectedCount: records.length,
+    successItems,
+    failureItems,
+  };
+}
+
+function StockupGenerationResultModal({
+  result,
+  onClose,
+}: {
+  result: StockupGenerationResult | null;
+  onClose: () => void;
+}) {
+  if (!result) {
+    return null;
+  }
+
+  const successCount = result.successItems.length;
+  const failureCount = result.failureItems.length;
+  const resultBadgeTone = failureCount === 0 ? "success" : successCount === 0 ? "error" : "pending";
+  const resultBadgeLabel = failureCount === 0 ? "全部成功" : successCount === 0 ? "全部失败" : "部分成功";
+
+  return (
+    <Modal
+      open={Boolean(result)}
+      title="备货单生成结果"
+      widthClassName="max-w-[min(100%,920px)] w-full"
+      onClose={onClose}
+    >
+      <div className="space-y-5">
+        <div className="rounded-md border border-warning/30 bg-warning/5 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-body font-medium text-text-primary">批量生成备货单已处理完成</div>
+              <div className="mt-1 text-small text-text-secondary">
+                本次选择 {result.selectedCount} 个待处理发货计划，按 1 个发货计划生成 1 个备货单执行。请根据失败原因处理后重试。
+              </div>
+            </div>
+            <Badge tone={resultBadgeTone}>{resultBadgeLabel}</Badge>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-md border border-success/30 bg-success/5 p-4">
+            <div className="flex items-center gap-2 text-body font-medium text-success">
+              <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+              成功 {successCount} 个
+            </div>
+            <div className="mt-1 text-small text-text-secondary">已生成备货单，可在列表中查看关联备货单号。</div>
+          </div>
+          <div className="rounded-md border border-error/30 bg-error/5 p-4">
+            <div className="flex items-center gap-2 text-body font-medium text-error">
+              <AlertTriangle aria-hidden="true" className="h-4 w-4" />
+              失败 {failureCount} 个
+            </div>
+            <div className="mt-1 text-small text-text-secondary">以下明细未生成备货单，需要修复后重新发起。</div>
+          </div>
+        </div>
+
+        <section className="space-y-2">
+          <h3 className="text-body font-medium text-text-primary">成功明细</h3>
+          <div className="overflow-x-auto rounded-md border border-border">
+            <table className="w-full min-w-[620px] border-collapse text-left text-small">
+              <thead className="bg-bg-page text-text-muted">
+                <tr>
+                  <th className={tableHeadCell}>发货计划单号</th>
+                  <th className={tableHeadCell}>生成备货单号</th>
+                  <th className={tableHeadCell}>店铺</th>
+                  <th className={tableHeadCell}>收货仓库</th>
+                  <th className={tableHeadCell}>数量</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border bg-white">
+                {result.successItems.map((item) => (
+                  <tr key={item.id}>
+                    <td className="whitespace-nowrap px-3 py-3 font-medium text-text-primary">{item.planNo}</td>
+                    <td className="whitespace-nowrap px-3 py-3 font-medium text-primary">{item.stockOrderNo}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{item.store}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{item.receiveWarehouse}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{item.qty}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="text-body font-medium text-text-primary">失败明细</h3>
+          <div className="overflow-x-auto rounded-md border border-border">
+            <table className="w-full min-w-[720px] border-collapse text-left text-small">
+              <thead className="bg-bg-page text-text-muted">
+                <tr>
+                  <th className={tableHeadCell}>发货计划单号</th>
+                  <th className={tableHeadCell}>店铺</th>
+                  <th className={tableHeadCell}>收货仓库</th>
+                  <th className={tableHeadCell}>数量</th>
+                  <th className={tableHeadCell}>失败原因</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border bg-white">
+                {result.failureItems.map((item) => (
+                  <tr key={item.id}>
+                    <td className="whitespace-nowrap px-3 py-3 font-medium text-text-primary">{item.planNo}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{item.store}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{item.receiveWarehouse}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{item.qty}</td>
+                    <td className="px-3 py-3 text-error">{item.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <div className="flex justify-end gap-actions border-t border-border pt-4">
+          <Button variant="secondary" onClick={onClose}>关闭</Button>
+          <Button variant="primary" onClick={onClose}>知道了</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function StatusTabs({
   tabs,
   active,
@@ -2180,12 +2359,15 @@ export function ShippingPlanPage({
   records,
   onCreateStaTask,
   onViewStaTask,
+  onShowAlert,
 }: {
   records: ShippingPlanRecord[];
   onCreateStaTask?: (record: ShippingPlanRecord) => void;
   onViewStaTask?: (record: ShippingPlanRecord) => void;
+  onShowAlert?: (notice: FloatingAlertInput) => void;
 }) {
   const [activeStatusTab, setActiveStatusTab] = useState("all");
+  const [stockupGenerationResult, setStockupGenerationResult] = useState<StockupGenerationResult | null>(null);
   const statusTabs = useMemo(() => buildShippingPlanStatusTabs(records), [records]);
   const filteredRecords = useMemo(
     () => filterShippingPlanRecordsByStatusTab(records, activeStatusTab),
@@ -2210,6 +2392,36 @@ export function ShippingPlanPage({
     onPageChange: setPage,
     onPageSizeChange: setPageSize,
   };
+
+  const selectedRecords = useMemo(
+    () => pagedItems.filter((record) => selection.isSelected(record.id)),
+    [pagedItems, selection],
+  );
+  const selectedCount = selectedRecords.length;
+  const hasUnsupportedSelection = selectedRecords.some((record) => record.documentStatus !== "待处理");
+  const canBatchCreateStockup = selectedCount > 0 && !hasUnsupportedSelection;
+
+  function handleShippingPlanAction(action: string, record: ShippingPlanRecord) {
+    if (action === "create-sta") {
+      onCreateStaTask?.(record);
+    }
+  }
+
+  function handleBatchCreateStockup() {
+    if (selectedCount === 0) {
+      onShowAlert?.({
+        tone: "warning",
+        title: "请先勾选发货计划。",
+      });
+      return;
+    }
+
+    if (!canBatchCreateStockup) {
+      return;
+    }
+
+    setStockupGenerationResult(buildStockupGenerationResult(selectedRecords));
+  }
 
   return (
     <div className="space-y-4">
@@ -2263,6 +2475,19 @@ export function ShippingPlanPage({
           primaryActions={
             <>
               <Button variant="primary" size="sm">创建发货计划</Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={hasUnsupportedSelection}
+                title={
+                  hasUnsupportedSelection
+                      ? "仅支持状态=待处理的发货计划"
+                      : undefined
+                }
+                onClick={handleBatchCreateStockup}
+              >
+                生成备货单
+              </Button>
               <Button variant="secondary" size="sm">审批</Button>
               <Button variant="secondary" size="sm">作废</Button>
               <Button variant="secondary" size="sm">提交</Button>
@@ -2369,11 +2594,7 @@ export function ShippingPlanPage({
                   <ShippingPlanOperationCell
                     record={record}
                     onViewStaTask={onViewStaTask}
-                    onAction={onCreateStaTask ? (action, item) => {
-                      if (action === "create-sta") {
-                        onCreateStaTask(item);
-                      }
-                    } : undefined}
+                    onAction={handleShippingPlanAction}
                   />
                 </tr>
               ))}
@@ -2381,6 +2602,10 @@ export function ShippingPlanPage({
           </table>
         </ScrollableTablePanel>
       </Card>
+      <StockupGenerationResultModal
+        result={stockupGenerationResult}
+        onClose={() => setStockupGenerationResult(null)}
+      />
     </div>
   );
 }

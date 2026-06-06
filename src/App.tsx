@@ -1114,6 +1114,7 @@ export default function App() {
       store: record.store,
       status: record.status,
       currentStep: record.currentStep,
+      deliveryStatus: record.deliveryStatus,
       confirmedShipments: record.confirmedShipments,
       planCreated: record.planCreated,
       taskName: record.taskName,
@@ -1155,6 +1156,21 @@ export default function App() {
     openWorkspaceTab("edit-sta-task");
   }
 
+  function restartStaTaskFromSource(source: CreateStaTaskSource) {
+    setEditStaTaskContext(null);
+    setStaTaskDetailReturnToEdit(false);
+    setCreateStaTaskSource(source);
+    openWorkspaceTab("create-sta-task");
+  }
+
+  function restartStaTaskFromRecord(record: StaTaskRecord) {
+    restartStaTaskFromSource({
+      planId: record.planId ?? record.planNo ?? record.id,
+      planNo: record.planNo ?? record.staNo,
+      store: record.store,
+    });
+  }
+
   function openStaTaskDetail(record: StaTaskRecord, detailStep?: StaWizardStepName) {
     setStaTaskDetailId(record.id);
     setStaTaskDetailStep(detailStep ?? null);
@@ -1176,12 +1192,6 @@ export default function App() {
   }
 
   function openNextStaTaskDetail(record: StaTaskRecord, activeStep: StaWizardStepName) {
-    if (staTaskDetailReturnToEdit) {
-      openEditStaTask(record);
-      setStaTaskDetailReturnToEdit(false);
-      return;
-    }
-
     const activeIndex = staWizardStepOrder.indexOf(activeStep);
     const nextStep = staWizardStepOrder[activeIndex + 1];
     if (!nextStep) {
@@ -1190,6 +1200,7 @@ export default function App() {
 
     setStaTaskDetailId(record.id);
     setStaTaskDetailStep(nextStep);
+    setStaTaskDetailReturnToEdit(false);
     openWorkspaceTab("sta-task-detail");
   }
 
@@ -1202,6 +1213,7 @@ export default function App() {
 
     setStaTaskDetailId(record.id);
     setStaTaskDetailStep(previousStep);
+    setStaTaskDetailReturnToEdit(false);
     openWorkspaceTab("sta-task-detail");
   }
 
@@ -1218,6 +1230,7 @@ export default function App() {
 
     setStaTaskDetailId(record.id);
     setStaTaskDetailStep(targetStep);
+    setStaTaskDetailReturnToEdit(false);
     openWorkspaceTab("sta-task-detail");
   }
 
@@ -1445,13 +1458,14 @@ export default function App() {
         ? {
             ...current,
             currentStep: "箱子标签",
+            deliveryStatus: "已完成",
           }
         : current,
     );
     showFloatingAlert({
       tone: "success",
-      title: "配送服务提交成功",
-      description: "送达时段与承运服务已确认，当前 STA 任务进入箱子标签步骤。",
+      title: "配送服务已手动完成",
+      description: "已模拟外部单据回传配送服务结果，当前 STA 任务进入箱子标签步骤。",
     });
   }
 
@@ -2127,6 +2141,7 @@ export default function App() {
           records={shippingPlanRecords}
           onCreateStaTask={openCreateStaTaskFromPlan}
           onViewStaTask={openStaTaskFromPlan}
+          onShowAlert={showFloatingAlert}
         />
       )}
       {activeTab === "liangcang-sku" && <LiangcangSkuPage />}
@@ -2138,7 +2153,8 @@ export default function App() {
           onPlanCreated={handleStaPlanCreated}
           onConfirmPlacement={handleConfirmStaPlacement}
           onSubmitPacking={handleSubmitStaPacking}
-          onSubmitDelivery={handleSubmitStaDelivery}
+          onRestartStaTask={restartStaTaskFromSource}
+          onCompleteDelivery={handleSubmitStaDelivery}
           onOpenPreviousStepDetail={openStaTaskPreviousStepDetail}
           onValidationError={handleStaValidationError}
         />
@@ -2151,7 +2167,8 @@ export default function App() {
           onPlanCreated={handleStaPlanCreated}
           onConfirmPlacement={handleConfirmStaPlacement}
           onSubmitPacking={handleSubmitStaPacking}
-          onSubmitDelivery={handleSubmitStaDelivery}
+          onRestartStaTask={restartStaTaskFromSource}
+          onCompleteDelivery={handleSubmitStaDelivery}
           onOpenPreviousStepDetail={openStaTaskPreviousStepDetail}
           onValidationError={handleStaValidationError}
         />
@@ -2161,6 +2178,8 @@ export default function App() {
           record={staTaskDetailRecord}
           detailStep={staTaskDetailStep ?? undefined}
           onEdit={() => openEditStaTask(staTaskDetailRecord)}
+          onRestartStaTask={restartStaTaskFromRecord}
+          onCompleteDelivery={handleSubmitStaDelivery}
           onPreviousStep={openPreviousStaTaskDetail}
           onNextStep={openNextStaTaskDetail}
           onStepClick={openStaTaskDetailStep}
