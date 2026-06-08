@@ -762,6 +762,141 @@ function StaBoxLabelDetailStep({ shipments }: { shipments: ConfirmedShipment[] }
   );
 }
 
+function StaTrackingDetailStep({ shipments }: { shipments: ConfirmedShipment[] }) {
+  const displayShipments =
+    shipments.length > 0
+      ? shipments
+      : [
+          {
+            shipmentId: "FBA19C34CPYD",
+            fcCode: "YYZ7",
+            deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+            shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+          },
+          {
+            shipmentId: "FBA19C34CPYE",
+            fcCode: "YYZ7",
+            deliveryAddress: "YYZ7-12724 Coleraine Drive, L7E 4L8, Bolton, ON, CA",
+            shipmentName: "FBA STA (04/23/2026 08:24)-YYZ7",
+          },
+        ];
+  const [editingField, setEditingField] = useState<string | null>(null);
+
+  function isEditing(shipmentId: string, field: "deliveryWindow" | "tracking") {
+    return editingField === `${shipmentId}-${field}`;
+  }
+
+  return (
+    <div className="mt-6 grid gap-6 xl:grid-cols-2">
+      {displayShipments.map((shipment) => {
+        const deliveryEditing = isEditing(shipment.shipmentId, "deliveryWindow");
+        const trackingEditing = isEditing(shipment.shipmentId, "tracking");
+
+        return (
+          <div key={shipment.shipmentId} className="rounded-md border border-border bg-white p-5 shadow-sm">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div className="text-section-title font-section-title text-text-primary">
+                {shipment.shipmentName ?? `FBA STA (04/23/2026 08:24)-${shipment.fcCode}`}
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <span className="rounded-sm border border-primary px-2 py-1 text-caption text-primary">SHIPPED</span>
+                <button type="button" className="border-0 bg-transparent text-small text-primary hover:underline">
+                  查看装箱明细&gt;&gt;
+                </button>
+                <button type="button" className="inline-flex items-center gap-1 border-0 bg-transparent text-small text-primary hover:underline">
+                  下载装箱清单
+                  <span aria-hidden="true">↓</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr]">
+              <span className="text-text-muted">货件单号</span>
+              <span>{shipment.shipmentId}</span>
+              <span className="text-text-muted">Reference ID</span>
+              <span>2D4WOETI</span>
+              <span className="text-text-muted">物流中心编码</span>
+              <span>{shipment.fcCode}</span>
+              <span className="text-text-muted">配送地址</span>
+              <span>{shipment.deliveryAddress}</span>
+            </div>
+
+            <div className="mt-5 border-l-4 border-primary pl-3 font-medium text-text-primary">送达时段</div>
+            <div className="mt-3 grid items-center gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr]">
+              <span className="text-text-muted">
+                <span className="text-danger">*</span>
+                送达时段
+              </span>
+              <div className="flex min-w-0 items-center gap-3">
+                {deliveryEditing ? (
+                  <Input defaultValue="2020-04-21 08:30 ~ 2020-05-10 08:30" className="max-w-[360px]" />
+                ) : (
+                  <span>
+                    2026-06-07 ~ 2026-06-14
+                    <span className="ml-2 text-warning">（2026-06-07之前可重新编辑）</span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="shrink-0 border-0 bg-transparent text-small text-primary hover:underline"
+                  onClick={() => setEditingField(`${shipment.shipmentId}-deliveryWindow`)}
+                >
+                  编辑
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 border-l-4 border-primary pl-3 font-medium text-text-primary">配送服务</div>
+            <div className="mt-3 grid gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr_92px_1fr]">
+              <span className="text-text-muted">发货日期</span>
+              <span>2026-04-29</span>
+              <span className="text-text-muted">配送模式</span>
+              <span>其他承运人</span>
+              <span className="text-text-muted">承运人类型</span>
+              <span>汽运零担(LTL)</span>
+              <span className="text-text-muted">运输方式</span>
+              <span>海运</span>
+              <span className="text-text-muted">承运人</span>
+              <span>其他</span>
+            </div>
+
+            <div className="mt-5 flex items-center gap-3 border-l-4 border-primary pl-3 font-medium text-text-primary">
+              <span>货件追踪</span>
+              {trackingEditing ? (
+                <span className="flex gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setEditingField(null)}>
+                    取消
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={() => setEditingField(null)}>
+                    确定
+                  </Button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="border-0 bg-transparent text-small text-primary hover:underline"
+                  onClick={() => setEditingField(`${shipment.shipmentId}-tracking`)}
+                >
+                  编辑
+                </button>
+              )}
+            </div>
+            <div className="mt-3 grid gap-x-8 gap-y-3 text-small md:grid-cols-[92px_1fr]">
+              <span className="text-text-muted">提货单号(BOL)</span>
+              {trackingEditing ? <Input placeholder="请输入提货单号" /> : <span />}
+              <span className="text-text-muted">
+                <span className="text-danger">*</span>
+                跟踪编号(PRO)
+              </span>
+              {trackingEditing ? <Input placeholder="请输入跟踪编号" /> : <span />}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function DetailMini({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -1659,6 +1794,11 @@ export function CreateStaTaskPage({
         ) : wizardStepIndex === 3 ? (
           <>
             <StaBoxLabelDetailStep shipments={confirmedShipments} />
+            {wizardFooter}
+          </>
+        ) : wizardStepIndex === 4 ? (
+          <>
+            <StaTrackingDetailStep shipments={confirmedShipments} />
             {wizardFooter}
           </>
         ) : (

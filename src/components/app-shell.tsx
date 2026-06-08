@@ -35,6 +35,7 @@ import { SegmentedControl } from "./ui/segmented-control";
 type NavIconName =
   | "product"
   | "firstLeg"
+  | "logisticsChannel"
   | "shippingPlan"
   | "sta"
   | "fba"
@@ -89,10 +90,20 @@ const navigationTree: NavSection[] = [
     icon: "firstLeg",
     groups: [
       {
+        id: "logistics-provider-management",
+        label: "物流商管理",
+        items: [
+          { id: "logistics-provider", label: "物流商", icon: "logisticsChannel" },
+          { id: "logistics-channel", label: "物流渠道", icon: "logisticsChannel" },
+          { id: "logistics-quote-rate", label: "报价与费率", icon: "logisticsChannel" },
+        ],
+      },
+      {
         id: "first-leg-tasks",
         label: "物流订单",
         items: [
           { id: "shipping-plan", label: "发货计划", icon: "shippingPlan" },
+          { id: "stockup-order", label: "备货单", icon: "orders" },
           { id: "sta-task", label: "STA任务", icon: "sta" },
           { id: "fba-shipment", label: "FBA货件", icon: "fba" },
         ],
@@ -165,6 +176,7 @@ const navigationTree: NavSection[] = [
 const iconMap: Record<NavIconName, LucideIcon> = {
   product: Package,
   firstLeg: Plane,
+  logisticsChannel: Truck,
   shippingPlan: Truck,
   sta: ClipboardList,
   fba: PackageCheck,

@@ -60,6 +60,10 @@ import { DesignSystemPage } from "./pages/design-system-page";
 import { InventoryFlowQueryPage } from "./pages/inventory-flow-query";
 import { InventoryQueryPage } from "./pages/inventory-query";
 import { LiangcangSkuPage } from "./pages/liangcang-sku-page";
+import { LogisticsChannelPage } from "./pages/logistics-channel-page";
+import { LogisticsProviderPage } from "./pages/logistics-provider-page";
+import { LogisticsQuoteRatePage } from "./pages/logistics-quote-rate-page";
+import { StockupOrderPage } from "./pages/stockup-order-page";
 import {
   CreateStaTaskPage,
   type CreateStaTaskSource,
@@ -143,6 +147,21 @@ const staWizardStepOrder: StaWizardStepName[] = [
 type WorkspaceTabKey =
   | "home"
   | "liangcang-sku"
+  | "logistics-provider"
+  | "logistics-provider-create"
+  | "logistics-provider-edit"
+  | "logistics-provider-detail"
+  | "logistics-channel"
+  | "logistics-channel-create"
+  | "logistics-channel-edit"
+  | "logistics-channel-detail"
+  | "logistics-quote-rate"
+  | "logistics-quote-rate-create-fcl"
+  | "logistics-quote-rate-edit-fcl"
+  | "logistics-quote-rate-create-lcl"
+  | "logistics-quote-rate-edit-lcl"
+  | "logistics-quote-rate-detail"
+  | "stockup-order"
   | "shipping-plan"
   | "create-sta-task"
   | "edit-sta-task"
@@ -523,6 +542,9 @@ export default function App() {
   const [currentTenantId, setCurrentTenantId] = useState(tenantOptions[0].id);
   const [activeTab, setActiveTab] = useState<WorkspaceTabKey>("home");
   const [openTabs, setOpenTabs] = useState<WorkspaceTabKey[]>(["home"]);
+  const [logisticsProviderResetKey, setLogisticsProviderResetKey] = useState(0);
+  const [logisticsChannelResetKey, setLogisticsChannelResetKey] = useState(0);
+  const [logisticsQuoteRateResetKey, setLogisticsQuoteRateResetKey] = useState(0);
   const [createStaTaskSource, setCreateStaTaskSource] = useState<CreateStaTaskSource | null>(null);
   const [editStaTaskContext, setEditStaTaskContext] = useState<EditStaTaskContext | null>(null);
   const [staTaskDetailId, setStaTaskDetailId] = useState<string | null>(null);
@@ -1509,6 +1531,21 @@ export default function App() {
       "export-task-center": { key: "export-task-center", label: "导出任务中心", closable: true, icon: Download },
       "message-center": { key: "message-center", label: "消息中心", closable: true, icon: Bell },
       "liangcang-sku": { key: "liangcang-sku", label: "良仓SKU资料", closable: true, icon: Package },
+      "logistics-provider": { key: "logistics-provider", label: "物流商", closable: true, icon: Truck },
+      "logistics-provider-create": { key: "logistics-provider-create", label: "添加物流商", closable: true, icon: Truck },
+      "logistics-provider-edit": { key: "logistics-provider-edit", label: "编辑物流商", closable: true, icon: Truck },
+      "logistics-provider-detail": { key: "logistics-provider-detail", label: "物流商详情", closable: true, icon: Truck },
+      "logistics-channel": { key: "logistics-channel", label: "物流渠道", closable: true, icon: Truck },
+      "logistics-channel-create": { key: "logistics-channel-create", label: "添加物流渠道", closable: true, icon: Truck },
+      "logistics-channel-edit": { key: "logistics-channel-edit", label: "编辑物流渠道", closable: true, icon: Truck },
+      "logistics-channel-detail": { key: "logistics-channel-detail", label: "物流渠道详情", closable: true, icon: Truck },
+      "logistics-quote-rate": { key: "logistics-quote-rate", label: "报价与费率", closable: true, icon: Truck },
+      "logistics-quote-rate-create-fcl": { key: "logistics-quote-rate-create-fcl", label: "添加整柜报价", closable: true, icon: Truck },
+      "logistics-quote-rate-edit-fcl": { key: "logistics-quote-rate-edit-fcl", label: "编辑整柜报价", closable: true, icon: Truck },
+      "logistics-quote-rate-create-lcl": { key: "logistics-quote-rate-create-lcl", label: "添加散货报价", closable: true, icon: Truck },
+      "logistics-quote-rate-edit-lcl": { key: "logistics-quote-rate-edit-lcl", label: "编辑散货报价", closable: true, icon: Truck },
+      "logistics-quote-rate-detail": { key: "logistics-quote-rate-detail", label: "报价详情", closable: true, icon: Truck },
+      "stockup-order": { key: "stockup-order", label: "备货单", closable: true, icon: ClipboardList },
       "shipping-plan": { key: "shipping-plan", label: "发货计划", closable: true, icon: Truck },
       "create-sta-task": { key: "create-sta-task", label: "创建STA", closable: true, icon: ClipboardList },
       "edit-sta-task": {
@@ -1968,6 +2005,8 @@ export default function App() {
           ? "customer"
           : activeTab === "create-sta-task" || activeTab === "shipping-plan"
             ? "shipping-plan"
+          : activeTab === "stockup-order"
+            ? "stockup-order"
           : activeTab === "edit-sta-task" || activeTab === "sta-task-detail" || activeTab === "sta-task"
             ? "sta-task"
           : activeTab === "fba-shipment" || activeTab === "fba-shipment-detail"
@@ -1978,6 +2017,12 @@ export default function App() {
             ? "inventory-flow-query"
           : activeTab === "liangcang-sku"
             ? "liangcang-sku"
+          : activeTab.startsWith("logistics-provider")
+            ? "logistics-provider"
+          : activeTab.startsWith("logistics-channel")
+            ? "logistics-channel"
+          : activeTab.startsWith("logistics-quote-rate")
+            ? "logistics-quote-rate"
           : "purchase-order";
 
   const currentTenant = tenantOptions.find((item) => item.id === currentTenantId) ?? tenantOptions[0];
@@ -2007,11 +2052,23 @@ export default function App() {
         if (key === "shipping-plan") {
           openWorkspaceTab("shipping-plan");
         }
+        if (key === "stockup-order") {
+          openWorkspaceTab("stockup-order");
+        }
         if (key === "sta-task") {
           openWorkspaceTab("sta-task");
         }
         if (key === "fba-shipment") {
           openWorkspaceTab("fba-shipment");
+        }
+        if (key === "logistics-channel") {
+          openWorkspaceTab("logistics-channel");
+        }
+        if (key === "logistics-provider") {
+          openWorkspaceTab("logistics-provider");
+        }
+        if (key === "logistics-quote-rate") {
+          openWorkspaceTab("logistics-quote-rate");
         }
         if (key === "purchase-order") {
           openWorkspaceTab("list");
@@ -2144,7 +2201,35 @@ export default function App() {
           onShowAlert={showFloatingAlert}
         />
       )}
+      {activeTab === "stockup-order" && <StockupOrderPage />}
       {activeTab === "liangcang-sku" && <LiangcangSkuPage />}
+      {openTabs.includes("logistics-provider") && (
+        <div className={activeTab.startsWith("logistics-provider") ? "block" : "hidden"}>
+          <LogisticsProviderPage
+            resetKey={logisticsProviderResetKey}
+            activeWorkspaceTab={activeTab}
+            onOpenWorkspaceTab={(tab) => openWorkspaceTab(tab as WorkspaceTabKey)}
+          />
+        </div>
+      )}
+      {openTabs.includes("logistics-channel") && (
+        <div className={activeTab.startsWith("logistics-channel") ? "block" : "hidden"}>
+          <LogisticsChannelPage
+            resetKey={logisticsChannelResetKey}
+            activeWorkspaceTab={activeTab}
+            onOpenWorkspaceTab={(tab) => openWorkspaceTab(tab as WorkspaceTabKey)}
+          />
+        </div>
+      )}
+      {openTabs.includes("logistics-quote-rate") && (
+        <div className={activeTab.startsWith("logistics-quote-rate") ? "block" : "hidden"}>
+          <LogisticsQuoteRatePage
+            resetKey={logisticsQuoteRateResetKey}
+            activeWorkspaceTab={activeTab}
+            onOpenWorkspaceTab={(tab) => openWorkspaceTab(tab as WorkspaceTabKey)}
+          />
+        </div>
+      )}
       {activeTab === "create-sta-task" && createStaTaskSource ? (
         <CreateStaTaskPage
           source={createStaTaskSource}
