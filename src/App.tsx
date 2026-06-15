@@ -60,10 +60,16 @@ import { DesignSystemPage } from "./pages/design-system-page";
 import { InventoryFlowQueryPage } from "./pages/inventory-flow-query";
 import { InventoryQueryPage } from "./pages/inventory-query";
 import { LiangcangSkuPage } from "./pages/liangcang-sku-page";
+import { FirstLegLogisticsOrderPage } from "./pages/first-leg-logistics-order-page";
 import { LogisticsChannelPage } from "./pages/logistics-channel-page";
+import { LogisticsChangeOrderPage } from "./pages/logistics-change-order-page";
 import { LogisticsProviderPage } from "./pages/logistics-provider-page";
 import { LogisticsQuoteRatePage } from "./pages/logistics-quote-rate-page";
+import { PaymentPoolPage } from "./pages/payment-pool-page";
+import { PaymentRequestPage } from "./pages/payment-request-page";
+import { LogisticsPaymentRequestCreatePage } from "./pages/payment-request-logistics-page";
 import { StockupOrderPage } from "./pages/stockup-order-page";
+import { TransparentPlanPage } from "./pages/transparent-plan-page";
 import {
   CreateStaTaskPage,
   type CreateStaTaskSource,
@@ -147,6 +153,7 @@ const staWizardStepOrder: StaWizardStepName[] = [
 type WorkspaceTabKey =
   | "home"
   | "liangcang-sku"
+  | "transparent-plan"
   | "logistics-provider"
   | "logistics-provider-create"
   | "logistics-provider-edit"
@@ -162,6 +169,11 @@ type WorkspaceTabKey =
   | "logistics-quote-rate-edit-lcl"
   | "logistics-quote-rate-detail"
   | "stockup-order"
+  | "logistics-change-order"
+  | "first-leg-logistics-order"
+  | "first-leg-logistics-order-create"
+  | "first-leg-logistics-order-edit"
+  | "first-leg-logistics-order-detail"
   | "shipping-plan"
   | "create-sta-task"
   | "edit-sta-task"
@@ -187,7 +199,12 @@ type WorkspaceTabKey =
   | "customer-edit"
   | "customer-detail"
   | "inventory-query"
-  | "inventory-flow-query";
+  | "inventory-flow-query"
+  | "payment-pool"
+  | "payment-request"
+  | "payment-request-logistics-detail"
+  | "payment-request-logistics-edit"
+  | "payment-request-logistics-create";
 type EditorMode = "create" | "edit";
 type ListScenario = "normal" | "loading" | "empty" | "no-result" | "no-auth" | "partial-success";
 type EditScenario = "normal" | "save-failed" | "submit-failed" | "conflict" | "read-only";
@@ -552,6 +569,7 @@ export default function App() {
   const [staTaskDetailReturnToEdit, setStaTaskDetailReturnToEdit] = useState(false);
   const [staTaskRecords, setStaTaskRecords] = useState<StaTaskRecord[]>(initialStaTaskRecords);
   const [shippingPlanRecords, setShippingPlanRecords] = useState<ShippingPlanRecord[]>(initialShippingPlanRecords);
+  const [paymentCreatePoolIds, setPaymentCreatePoolIds] = useState<string[]>([]);
   const [fbaShipmentRecords, setFbaShipmentRecords] = useState<FbaShipmentRecord[]>(initialFbaShipmentRecords);
   const [fbaShipmentDetailId, setFbaShipmentDetailId] = useState<string | null>(null);
   const [listScenario, setListScenario] = useState<ListScenario>("normal");
@@ -1531,6 +1549,7 @@ export default function App() {
       "export-task-center": { key: "export-task-center", label: "导出任务中心", closable: true, icon: Download },
       "message-center": { key: "message-center", label: "消息中心", closable: true, icon: Bell },
       "liangcang-sku": { key: "liangcang-sku", label: "良仓SKU资料", closable: true, icon: Package },
+      "transparent-plan": { key: "transparent-plan", label: "透明计划", closable: true, icon: Package },
       "logistics-provider": { key: "logistics-provider", label: "物流商", closable: true, icon: Truck },
       "logistics-provider-create": { key: "logistics-provider-create", label: "添加物流商", closable: true, icon: Truck },
       "logistics-provider-edit": { key: "logistics-provider-edit", label: "编辑物流商", closable: true, icon: Truck },
@@ -1546,6 +1565,11 @@ export default function App() {
       "logistics-quote-rate-edit-lcl": { key: "logistics-quote-rate-edit-lcl", label: "编辑散货报价", closable: true, icon: Truck },
       "logistics-quote-rate-detail": { key: "logistics-quote-rate-detail", label: "报价详情", closable: true, icon: Truck },
       "stockup-order": { key: "stockup-order", label: "备货单", closable: true, icon: ClipboardList },
+      "logistics-change-order": { key: "logistics-change-order", label: "创建物流变更单", closable: true, icon: ClipboardList },
+      "first-leg-logistics-order": { key: "first-leg-logistics-order", label: "头程物流订单", closable: true, icon: ClipboardList },
+      "first-leg-logistics-order-create": { key: "first-leg-logistics-order-create", label: "创建头程物流订单", closable: true, icon: ClipboardList },
+      "first-leg-logistics-order-edit": { key: "first-leg-logistics-order-edit", label: "编辑头程物流订单", closable: true, icon: ClipboardList },
+      "first-leg-logistics-order-detail": { key: "first-leg-logistics-order-detail", label: "头程物流订单详情", closable: true, icon: ClipboardList },
       "shipping-plan": { key: "shipping-plan", label: "发货计划", closable: true, icon: Truck },
       "create-sta-task": { key: "create-sta-task", label: "创建STA", closable: true, icon: ClipboardList },
       "edit-sta-task": {
@@ -1588,6 +1612,11 @@ export default function App() {
       "customer-create": { key: "customer-create", label: "新建客户", closable: true },
       "customer-edit": { key: "customer-edit", label: "编辑客户", closable: true },
       "customer-detail": { key: "customer-detail", label: "客户详情", closable: true },
+      "payment-pool": { key: "payment-pool", label: "请款池", closable: true, icon: ClipboardList },
+      "payment-request": { key: "payment-request", label: "请款单", closable: true, icon: ClipboardList },
+      "payment-request-logistics-detail": { key: "payment-request-logistics-detail", label: "请款单详情", closable: true, icon: ClipboardList },
+      "payment-request-logistics-edit": { key: "payment-request-logistics-edit", label: "编辑请款单", closable: true, icon: ClipboardList },
+      "payment-request-logistics-create": { key: "payment-request-logistics-create", label: "添加请款单", closable: true, icon: ClipboardList },
     } as const;
 
     return openTabs.map((key) => definitions[key]);
@@ -1596,6 +1625,11 @@ export default function App() {
   function openWorkspaceTab(tab: WorkspaceTabKey) {
     setOpenTabs((current) => (current.includes(tab) ? current : [...current, tab]));
     setActiveTab(tab);
+  }
+
+  function openLogisticsPaymentCreate(poolIds: string[]) {
+    setPaymentCreatePoolIds(poolIds);
+    openWorkspaceTab("payment-request-logistics-create");
   }
 
   function activateTab(tab: WorkspaceTabKey) {
@@ -2007,6 +2041,10 @@ export default function App() {
             ? "shipping-plan"
           : activeTab === "stockup-order"
             ? "stockup-order"
+          : activeTab === "logistics-change-order"
+            ? "logistics-change-order"
+          : activeTab.startsWith("first-leg-logistics-order")
+            ? "first-leg-logistics-order"
           : activeTab === "edit-sta-task" || activeTab === "sta-task-detail" || activeTab === "sta-task"
             ? "sta-task"
           : activeTab === "fba-shipment" || activeTab === "fba-shipment-detail"
@@ -2017,12 +2055,22 @@ export default function App() {
             ? "inventory-flow-query"
           : activeTab === "liangcang-sku"
             ? "liangcang-sku"
+          : activeTab === "transparent-plan"
+            ? "transparent-plan"
           : activeTab.startsWith("logistics-provider")
             ? "logistics-provider"
           : activeTab.startsWith("logistics-channel")
             ? "logistics-channel"
           : activeTab.startsWith("logistics-quote-rate")
             ? "logistics-quote-rate"
+          : activeTab === "payment-pool"
+            ? "payment-pool"
+          : activeTab === "payment-request"
+            ? "payment-request"
+          : activeTab.startsWith("payment-request-logistics")
+            ? activeTab === "payment-request-logistics-create"
+              ? "payment-pool"
+              : "payment-request"
           : "purchase-order";
 
   const currentTenant = tenantOptions.find((item) => item.id === currentTenantId) ?? tenantOptions[0];
@@ -2054,6 +2102,12 @@ export default function App() {
         }
         if (key === "stockup-order") {
           openWorkspaceTab("stockup-order");
+        }
+        if (key === "logistics-change-order") {
+          openWorkspaceTab("logistics-change-order");
+        }
+        if (key === "first-leg-logistics-order") {
+          openWorkspaceTab("first-leg-logistics-order");
         }
         if (key === "sta-task") {
           openWorkspaceTab("sta-task");
@@ -2087,6 +2141,15 @@ export default function App() {
         }
         if (key === "liangcang-sku") {
           openWorkspaceTab("liangcang-sku");
+        }
+        if (key === "transparent-plan") {
+          openWorkspaceTab("transparent-plan");
+        }
+        if (key === "payment-pool") {
+          openWorkspaceTab("payment-pool");
+        }
+        if (key === "payment-request") {
+          openWorkspaceTab("payment-request");
         }
       }}
       onSecondaryNavSelect={(key) => {
@@ -2202,7 +2265,40 @@ export default function App() {
         />
       )}
       {activeTab === "stockup-order" && <StockupOrderPage />}
+      {activeTab === "logistics-change-order" && <LogisticsChangeOrderPage />}
+      {activeTab.startsWith("first-leg-logistics-order") && (
+        <FirstLegLogisticsOrderPage
+          activeWorkspaceTab={activeTab}
+          onOpenWorkspaceTab={(tab) => openWorkspaceTab(tab as WorkspaceTabKey)}
+        />
+      )}
       {activeTab === "liangcang-sku" && <LiangcangSkuPage />}
+      {activeTab === "transparent-plan" && <TransparentPlanPage />}
+      {activeTab === "payment-pool" && (
+        <PaymentPoolPage onCreatePaymentRequest={openLogisticsPaymentCreate} />
+      )}
+      {activeTab === "payment-request-logistics-create" && (
+        <LogisticsPaymentRequestCreatePage
+          key={paymentCreatePoolIds.join(",")}
+          poolIds={paymentCreatePoolIds}
+          onBack={() => openWorkspaceTab("payment-pool")}
+          onSubmit={() => openWorkspaceTab("payment-request")}
+        />
+      )}
+      {openTabs.includes("payment-request") && (
+        <div
+          className={
+            activeTab.startsWith("payment-request") && activeTab !== "payment-request-logistics-create"
+              ? "block"
+              : "hidden"
+          }
+        >
+          <PaymentRequestPage
+            activeWorkspaceTab={activeTab}
+            onOpenWorkspaceTab={(tab) => openWorkspaceTab(tab as WorkspaceTabKey)}
+          />
+        </div>
+      )}
       {openTabs.includes("logistics-provider") && (
         <div className={activeTab.startsWith("logistics-provider") ? "block" : "hidden"}>
           <LogisticsProviderPage

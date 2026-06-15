@@ -1,0 +1,41 @@
+---
+description: 全局业务页面组件与样式复用规范
+globs: src/pages/**/*.tsx,src/components/ui/**/*.tsx
+alwaysApply: false
+---
+
+# 全局 UI 组件规范
+
+在新增或调整任意业务模块页面时，必须优先遵循：
+
+`src/components/ui/COMPONENT_GUIDELINES.md`
+
+本文档是 `01-页面设计基线/` 在组件使用层面的落地补充；如有冲突，以 `01-页面设计基线/` 为准。
+
+## 真实前端组件参考
+
+`../jiniu-erp-ui/` 是真实 ERP 前端项目，作为新原型页面的组件风格与交互模式参考源。`Shenghan-design/` 仍使用 React 实现原型，不直接复制或引入 `jiniu-erp-ui` 的 Vue 代码。
+
+`../jiniu-erp-ui/` 必须视为只读参考项目：允许读取源码、规则、组件和页面模式；禁止修改、重构、格式化、删除、移动其中任何文件，也不要在该目录下新增原型文件、文档或配置。所有原型实现和规则沉淀都应写入 `Shenghan-design/` 或工作区内明确用于原型交付的文档位置。
+
+新增页面时，不要求 `jiniu-erp-ui/` 中存在同名业务页面；应先判断页面类型，再参考真实项目中的同类组件和同类交互：
+
+- 列表页参考 `SelectSearch`、`Table`、`ColumnsConfig`、`MoreButton`、`CopyText`、`DictTag` 的使用方式。
+- 创建/编辑页参考真实项目中表单分区、必填标记、底部操作区、选择弹窗和联动带出信息的组织方式。
+- 详情页参考真实项目中只读信息展示、主次信息排版、表格明细和操作收纳方式。
+- 弹窗参考真实项目中选择列表、确认/取消按钮、禁用项、空状态和提示文案的处理方式。
+- 原型可用 `src/components/ui/` 中的 React 组件复刻视觉与交互层级，但字段组织、按钮位置、表格行为、筛选方式应尽量贴近真实系统。
+
+核心要求：
+
+- 复用 `src/components/ui/` 中已有基础组件，不要在业务页面重复实现 Button、Input、Select、DateRangePicker、Pagination、Badge、Modal、Card。
+- 页面外层使用 `space-y-4`，筛选区和列表区使用 `Card`。
+- 筛选区使用 `flex flex-wrap items-end gap-3`，组合筛选使用“字段下拉 + 输入框/日期范围”。
+- 单选下拉使用 `Select`，清除交互为 hover 后右侧显示 `x`，不要在菜单中加“取消选中”选项；必填字段设置 `clearable={false}`。
+- 多选下拉使用标签 `+N` 样式，右侧 hover 清空，下拉列表用右侧对勾，不使用 checkbox；在表格/滚动容器内必须 portal 渲染浮层。
+- 表格使用统一表头类、`overflow-x-auto`、`divide-y divide-border bg-white` 和 `Pagination`。
+- 列表工具栏左右分区：左侧放新增、作废、生成单据、下推、批量处理等业务全局功能；右侧只放导入、导出类功能。多个导出格式拆成独立按钮，如 `导出Excel`、`导出PDF`。
+- 明细表字段级批量编辑入口放在对应字段表头内，例如“申报价格 批量编辑”；点击后弹窗只修改当前字段整列数据，不放在表格上方全局功能区。
+- 创建/编辑页字段、枚举、数据来源、展示口径变化时，必须同步检查并修改对应详情页。
+- 详情页只展示数据，不使用禁用态输入框、禁用下拉框或可编辑表单控件；除非业务明确要求保留控件形态，否则使用纯文本或 `InfoItem`。
+- 不要硬编码颜色、字号、圆角、阴影，使用 `ui-foundation.css` token 和 Tailwind 语义类。

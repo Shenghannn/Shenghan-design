@@ -60,6 +60,105 @@ const statusTabs: Array<{ label: string; value: "全部" | StockupStatus }> = [
 
 const stockupOrderRecords: StockupOrderRecord[] = [
   {
+    id: "so-heavy-001",
+    stockupNo: "SU202606090901",
+    platform: "Amazon",
+    store: "AMZ-US-BULK",
+    shipWarehouseType: "实体仓",
+    shipWarehouse: "义乌发货仓",
+    receiveWarehouseType: "平台仓",
+    receiveWarehouse: "Amazon LAX9",
+    logisticsProvider: "义乌市双捷国际货运代理有限公司",
+    logisticsChannel: "美南标快",
+    deliveryMode: "整柜",
+    transportMode: "海运",
+    totalWeight: "9200.00",
+    totalVolume: "34.50",
+    logisticsPlanNo: "-",
+    shippingPlanNo: "-",
+    shipmentNo: "-",
+    thirdInboundNo: "-",
+    shipmentRelationStatus: "未关联",
+    thirdInboundRelationStatus: "未关联",
+    logisticsPlanRelationStatus: "未关联",
+    shippingOrderRelationStatus: "未关联",
+    remark: "超限演示备货单-家具体积件",
+    estimatedShipTime: "2026-06-22",
+    updater: "兰轩",
+    updatedAt: "2026-06-09 13:42:11",
+    creator: "兰轩",
+    createdAt: "2026-06-09 13:30:00",
+    status: "待处理",
+    stockupQty: 1200,
+    sku: "SKU-BULK-9001",
+  },
+  {
+    id: "so-heavy-002",
+    stockupNo: "SU202606090902",
+    platform: "Amazon",
+    store: "AMZ-US-BULK",
+    shipWarehouseType: "实体仓",
+    shipWarehouse: "义乌发货仓",
+    receiveWarehouseType: "平台仓",
+    receiveWarehouse: "Amazon LAX9",
+    logisticsProvider: "义乌市双捷国际货运代理有限公司",
+    logisticsChannel: "美南标快",
+    deliveryMode: "整柜",
+    transportMode: "海运",
+    totalWeight: "8800.00",
+    totalVolume: "32.20",
+    logisticsPlanNo: "-",
+    shippingPlanNo: "-",
+    shipmentNo: "-",
+    thirdInboundNo: "-",
+    shipmentRelationStatus: "未关联",
+    thirdInboundRelationStatus: "未关联",
+    logisticsPlanRelationStatus: "未关联",
+    shippingOrderRelationStatus: "未关联",
+    remark: "超限演示备货单-大件家电",
+    estimatedShipTime: "2026-06-22",
+    updater: "兰轩",
+    updatedAt: "2026-06-09 13:43:21",
+    creator: "兰轩",
+    createdAt: "2026-06-09 13:31:00",
+    status: "待处理",
+    stockupQty: 980,
+    sku: "SKU-BULK-9002",
+  },
+  {
+    id: "so-heavy-003",
+    stockupNo: "SU202606090903",
+    platform: "Amazon",
+    store: "AMZ-US-BULK",
+    shipWarehouseType: "实体仓",
+    shipWarehouse: "义乌发货仓",
+    receiveWarehouseType: "平台仓",
+    receiveWarehouse: "Amazon LAX9",
+    logisticsProvider: "义乌市双捷国际货运代理有限公司",
+    logisticsChannel: "美南标快",
+    deliveryMode: "整柜",
+    transportMode: "海运",
+    totalWeight: "6400.00",
+    totalVolume: "25.80",
+    logisticsPlanNo: "-",
+    shippingPlanNo: "-",
+    shipmentNo: "-",
+    thirdInboundNo: "-",
+    shipmentRelationStatus: "未关联",
+    thirdInboundRelationStatus: "未关联",
+    logisticsPlanRelationStatus: "未关联",
+    shippingOrderRelationStatus: "未关联",
+    remark: "超限演示备货单-补充批次",
+    estimatedShipTime: "2026-06-23",
+    updater: "兰轩",
+    updatedAt: "2026-06-09 13:44:06",
+    creator: "兰轩",
+    createdAt: "2026-06-09 13:32:00",
+    status: "待处理",
+    stockupQty: 760,
+    sku: "SKU-BULK-9003",
+  },
+  {
     id: "so-001",
     stockupNo: "SU202606080001",
     platform: "Amazon",
@@ -535,12 +634,16 @@ function CreateLogisticsPlanPage({
   const [remark, setRemark] = useState("");
   const [customRemark, setCustomRemark] = useState("");
   const [activePlanTab, setActivePlanTab] = useState<"stockupDetail" | "logisticsInfo">("stockupDetail");
+  const [overLimitPromptOpen, setOverLimitPromptOpen] = useState(false);
   const selectedProvider = logisticsProviderOptions.find((item) => item.value === provider);
   const channelOptions = selectedProvider?.channels ?? [];
   const selectedChannel = channelOptions.find((item) => item.value === channel);
   const transportModeOptions = selectedChannel?.transportModes.map((value) => ({ label: value, value })) ?? [];
-  const totalWeight = sumNumber(planRecords.map((record) => record.totalWeight)).toFixed(2);
-  const totalVolume = sumNumber(planRecords.map((record) => record.totalVolume)).toFixed(2);
+  const totalWeightValue = sumNumber(planRecords.map((record) => record.totalWeight));
+  const totalVolumeValue = sumNumber(planRecords.map((record) => record.totalVolume));
+  const totalWeight = totalWeightValue.toFixed(2);
+  const totalVolume = totalVolumeValue.toFixed(2);
+  const exceedsContainerLimit = totalWeightValue >= 17500 && totalVolumeValue >= 65;
   const yesNoOptions = [
     { label: "请选择", value: "" },
     { label: "是", value: "是" },
@@ -579,6 +682,14 @@ function CreateLogisticsPlanPage({
   function handleChannelChange(value: string) {
     setChannel(value);
     setTransportMode("");
+  }
+
+  function handleFinishLogisticsPlan() {
+    if (exceedsContainerLimit) {
+      setOverLimitPromptOpen(true);
+      return;
+    }
+    onBack();
   }
 
   return (
@@ -766,9 +877,31 @@ function CreateLogisticsPlanPage({
 
       <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center gap-3 border-t border-border bg-white px-6 py-3 shadow-lg">
         <Button variant="secondary" size="sm" onClick={onBack}>取消</Button>
-        <Button variant="secondary" size="sm" onClick={onBack}>保存</Button>
-        <Button variant="primary" size="sm" onClick={onBack}>提交</Button>
+        <Button variant="secondary" size="sm" onClick={handleFinishLogisticsPlan}>保存</Button>
+        <Button variant="primary" size="sm" onClick={handleFinishLogisticsPlan}>提交</Button>
       </div>
+      {overLimitPromptOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="w-[420px] rounded-md bg-white p-5 shadow-xl">
+            <div className="text-title font-semibold text-text-primary">提示</div>
+            <div className="mt-3 text-body leading-6 text-text-secondary">
+              当前物流计划单总毛重{totalWeight}kg＞17.5吨，总体积{totalVolume}m³＞65m³。
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setOverLimitPromptOpen(false);
+                  onBack();
+                }}
+              >
+                确定
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

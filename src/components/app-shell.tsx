@@ -26,6 +26,7 @@ import {
   Truck,
   UserCircle2,
   Users,
+  Wallet,
   Warehouse,
   Workflow,
   X,
@@ -48,7 +49,8 @@ type NavIconName =
   | "putaway"
   | "supplier"
   | "customer"
-  | "warehouse";
+  | "warehouse"
+  | "finance";
 
 type NavItem = {
   id: string;
@@ -61,6 +63,10 @@ type NavItem = {
 type NavGroup = {
   id: string;
   label: string;
+  pageId?: string;
+  icon?: NavIconName;
+  enabled?: boolean;
+  statusLabel?: string;
   items: NavItem[];
 };
 
@@ -80,7 +86,10 @@ const navigationTree: NavSection[] = [
       {
         id: "product-items",
         label: "产品",
-        items: [{ id: "liangcang-sku", label: "良仓SKU资料", icon: "product" }],
+        items: [
+          { id: "liangcang-sku", label: "良仓SKU资料", icon: "product" },
+          { id: "transparent-plan", label: "透明计划", icon: "product" },
+        ],
       },
     ],
   },
@@ -104,9 +113,32 @@ const navigationTree: NavSection[] = [
         items: [
           { id: "shipping-plan", label: "发货计划", icon: "shippingPlan" },
           { id: "stockup-order", label: "备货单", icon: "orders" },
+          { id: "logistics-change-order", label: "物流变更单", icon: "orders" },
+          { id: "first-leg-logistics-order", label: "头程物流订单", icon: "orders" },
           { id: "sta-task", label: "STA任务", icon: "sta" },
           { id: "fba-shipment", label: "FBA货件", icon: "fba" },
         ],
+      },
+    ],
+  },
+  {
+    id: "finance",
+    label: "财务",
+    icon: "finance",
+    groups: [
+      {
+        id: "payment-pool",
+        label: "请款池",
+        pageId: "payment-pool",
+        icon: "finance",
+        items: [],
+      },
+      {
+        id: "payment-request",
+        label: "请款单",
+        pageId: "payment-request",
+        icon: "finance",
+        items: [],
       },
     ],
   },
@@ -118,6 +150,8 @@ const navigationTree: NavSection[] = [
       {
         id: "order-management",
         label: "订单管理",
+        pageId: "purchase-order",
+        icon: "orders",
         items: [
           { id: "purchase-order", label: "采购订单", icon: "orders" },
           { id: "inbound-notice", label: "入库通知单", icon: "notice", enabled: false, statusLabel: "未搭建" },
@@ -190,6 +224,7 @@ const iconMap: Record<NavIconName, LucideIcon> = {
   supplier: Building2,
   customer: Users,
   warehouse: Warehouse,
+  finance: Wallet,
 };
 
 const defaultSectionExpanded = Object.fromEntries(navigationTree.map((section) => [section.id, true]));
@@ -322,8 +357,18 @@ export function AppShell({
   const allSearchMenuItems = useMemo<SearchMenuItem[]>(
     () => [
       ...navigationTree.flatMap((section) =>
-        section.groups.flatMap((group) =>
-          group.items
+        section.groups.flatMap((group) => [
+          ...(group.pageId && group.enabled !== false
+            ? [
+                {
+                  id: group.pageId,
+                  label: group.label,
+                  sectionLabel: section.label,
+                  type: "primary" as const,
+                },
+              ]
+            : []),
+          ...group.items
             .filter((item) => item.enabled !== false)
             .map((item) => ({
               id: item.id,
@@ -332,7 +377,7 @@ export function AppShell({
               groupLabel: group.label,
               type: "primary" as const,
             })),
-        ),
+        ]),
       ),
       ...(secondaryNavItems ?? []).map((item) => ({
         id: item.id,
@@ -728,7 +773,7 @@ export function AppShell({
             <div className="flex flex-col items-center gap-2">
               {navigationTree.map((section) => {
                 const active = section.groups.some((group) =>
-                  group.items.some((item) => item.id === activeNavItemId),
+                  group.pageId === activeNavItemId || group.items.some((item) => item.id === activeNavItemId),
                 );
                 return (
                   <button
@@ -788,16 +833,59 @@ export function AppShell({
                       <div className="space-y-1 pl-2">
                         {section.groups.map((group) => {
                           const groupExpanded = expandedGroups[group.id];
+                          const groupDisabled = group.enabled === false;
+                          const groupActive = group.pageId === activeNavItemId;
+                          const GroupIcon = group.icon ? iconMap[group.icon] : null;
                           return (
                             <div key={group.id} className="space-y-1">
-                              <button
-                                type="button"
-                                className="flex w-full items-center justify-between rounded-sm px-2 py-2 text-left transition hover:bg-bg-hover"
-                                onClick={() => toggleGroup(group.id)}
-                              >
-                                <span className="text-body font-body-strong leading-ui-tight text-text-secondary">{group.label}</span>
-                                <ChevronIcon expanded={groupExpanded} small />
-                              </button>
+                              {group.pageId ? (
+                                <div
+                                  className={`flex w-full items-center rounded-sm transition ${
+                                    groupDisabled
+                                      ? "text-text-disabled"
+                                      : groupActive
+                                        ? "bg-primary-subtle text-primary"
+                                        : "text-text-secondary hover:bg-bg-hover"
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    disabled={groupDisabled}
+                                    title={groupDisabled ? `${group.label}暂未搭建` : undefined}
+                                    className="flex min-w-0 flex-1 items-center gap-control rounded-sm border-0 bg-transparent px-2 py-2 text-left text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-subtle disabled:cursor-not-allowed"
+                                    onClick={groupDisabled ? undefined : () => onNavItemSelect?.(group.pageId!)}
+                                  >
+                                    {GroupIcon ? (
+                                      <GroupIcon aria-hidden="true" strokeWidth={1.8} className={`h-4 w-4 ${groupActive ? "text-primary" : "text-text-muted"}`} />
+                                    ) : null}
+                                    <span className="truncate text-body font-body-strong leading-ui-tight">{group.label}</span>
+                                    {group.statusLabel ? (
+                                      <span className="shrink-0 rounded-full border border-border bg-bg-subtle px-2 py-0.5 text-mini text-text-muted">
+                                        {group.statusLabel}
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                  {group.items.length ? (
+                                    <button
+                                      type="button"
+                                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-inherit hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-subtle"
+                                      aria-label={`${groupExpanded ? "收起" : "展开"}${group.label}`}
+                                      onClick={() => toggleGroup(group.id)}
+                                    >
+                                      <ChevronIcon expanded={groupExpanded} small />
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center justify-between rounded-sm px-2 py-2 text-left transition hover:bg-bg-hover"
+                                  onClick={() => toggleGroup(group.id)}
+                                >
+                                  <span className="text-body font-body-strong leading-ui-tight text-text-secondary">{group.label}</span>
+                                  <ChevronIcon expanded={groupExpanded} small />
+                                </button>
+                              )}
 
                               {groupExpanded ? (
                                 <div className="space-y-1 pl-3">

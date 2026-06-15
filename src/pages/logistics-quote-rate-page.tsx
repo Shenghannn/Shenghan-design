@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -6,6 +6,7 @@ import { DateRangePicker, type DateRangeValue } from "../components/ui/date-rang
 import { Input } from "../components/ui/input";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
+import { cn } from "../lib/cn";
 
 type ShippingMode = "整柜" | "散货";
 
@@ -34,32 +35,25 @@ const tableHeadCell = "whitespace-nowrap px-3 py-3 font-medium";
 const logisticsProviderOptions = ["义乌市双捷国际货运代理有限公司", "浙江融盛国际物流有限公司", "深圳市以达物流有限公司", "宁波赛蓝供应链服务有限公司"];
 const logisticsChannelOptions = ["美南标快", "美西海派", "欧洲快线", "加拿大卡派", "美东快递"];
 const currencyOptions = ["USD", "CNY", "EUR", "CAD", "GBP"];
-const carrierOptions = ["美森快船", "以星快船", "长荣海运", "达飞轮船"];
-const channelQuoteProviderSchemes: Record<string, Array<{ provider: string; serviceLinks: string[] }>> = {
+const channelQuoteProviderSchemes: Record<string, Array<{ provider: string; serviceLinks: string[]; feeItems: string[] }>> = {
   "美南标快": [
-    { provider: "义乌市双捷国际货运代理有限公司", serviceLinks: ["国内揽收", "干线运输"] },
-    { provider: "浙江融盛国际物流有限公司", serviceLinks: ["清关", "尾程派送"] },
+    { provider: "义乌市双捷国际货运代理有限公司", serviceLinks: ["国内揽收", "干线运输"], feeItems: ["提货费", "报关费", "海运费", "订舱费", "港杂费"] },
+    { provider: "浙江融盛国际物流有限公司", serviceLinks: ["清关", "尾程派送"], feeItems: ["清关费", "税金", "派送费", "附加费"] },
   ],
   "美西海派": [
-    { provider: "义乌市双捷国际货运代理有限公司", serviceLinks: ["国内揽收", "干线运输"] },
-    { provider: "深圳市以达物流有限公司", serviceLinks: ["尾程派送"] },
+    { provider: "义乌市双捷国际货运代理有限公司", serviceLinks: ["国内揽收", "干线运输"], feeItems: ["提货费", "海运费", "港杂费"] },
+    { provider: "深圳市以达物流有限公司", serviceLinks: ["尾程派送"], feeItems: ["派送费", "附加费", "尾程处理费"] },
   ],
   "欧洲快线": [
-    { provider: "浙江融盛国际物流有限公司", serviceLinks: ["国内揽收", "干线运输", "清关"] },
+    { provider: "浙江融盛国际物流有限公司", serviceLinks: ["国内揽收", "干线运输", "清关"], feeItems: ["清关费", "税金", "附加费"] },
   ],
   "加拿大卡派": [
-    { provider: "宁波赛蓝供应链服务有限公司", serviceLinks: ["干线运输", "清关"] },
-    { provider: "深圳市以达物流有限公司", serviceLinks: ["尾程派送"] },
+    { provider: "宁波赛蓝供应链服务有限公司", serviceLinks: ["干线运输", "清关"], feeItems: ["海运费", "订舱费", "清关费"] },
+    { provider: "深圳市以达物流有限公司", serviceLinks: ["尾程派送"], feeItems: ["派送费", "附加费"] },
   ],
   "美东快递": [
-    { provider: "深圳市以达物流有限公司", serviceLinks: ["国内揽收", "干线运输", "尾程派送"] },
+    { provider: "深圳市以达物流有限公司", serviceLinks: ["国内揽收", "干线运输", "尾程派送"], feeItems: ["仓储操作费", "派送费", "尾程处理费"] },
   ],
-};
-const feeLabelsByServiceLink: Record<string, string[]> = {
-  "国内揽收": ["提货费", "报关费"],
-  "干线运输": ["海运费", "订舱费", "港杂费", "单证操作费"],
-  "清关": ["清关费", "税金"],
-  "尾程派送": ["派送费", "附加费"],
 };
 const addressTree = [
   { country: "中国", provinces: [{ name: "浙江省", cities: ["义乌", "宁波"] }, { name: "广东省", cities: ["深圳", "广州"] }] },
@@ -106,7 +100,7 @@ const quoteRateRecords: QuoteRateRecord[] = [
     updater: "超级管理员",
     updatedAt: "2026-06-08 10:32:41",
     carrier: "达飞轮船",
-    pricingMode: "按重量区间报价",
+    pricingMode: "按重量段报价",
     totalPrice: "3.80/KG",
   },
   {
@@ -141,6 +135,20 @@ function optionList(values: string[]) {
 
 function uniqueOptions(values: string[]) {
   return Array.from(new Set(values)).map((value) => ({ label: value, value }));
+}
+
+function getProvidersByChannel(channel: string) {
+  return (channelQuoteProviderSchemes[channel] ?? []).map((scheme) => scheme.provider);
+}
+
+function getChannelsByProvider(provider: string) {
+  return logisticsChannelOptions.filter((channel) =>
+    (channelQuoteProviderSchemes[channel] ?? []).some((scheme) => scheme.provider === provider),
+  );
+}
+
+function getPrimaryLogisticsProvider(providerText: string) {
+  return providerText.split("、")[0] ?? "";
 }
 
 function inDateRange(dateText: string, range: DateRangeValue) {
@@ -211,13 +219,25 @@ function AddressCascade({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [countryName, setCountryName] = useState(addressTree[0].country);
   const country = addressTree.find((item) => item.country === countryName) ?? addressTree[0];
   const [provinceName, setProvinceName] = useState(country.provinces[0].name);
   const province = country.provinces.find((item) => item.name === provinceName) ?? country.provinces[0];
 
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, []);
+
   return (
-    <div className={`relative ${className ?? ""}`}>
+    <div ref={containerRef} className={`relative ${className ?? ""}`}>
       <button type="button" className="field-control flex w-full items-center justify-between text-left" onClick={() => setOpen((current) => !current)}>
         <span className={value ? "truncate text-text-primary" : "truncate text-text-placeholder"}>{value || placeholder}</span>
         <span className="text-text-muted">{open ? "⌃" : "⌄"}</span>
@@ -288,10 +308,161 @@ function FormRow({ label, children, required }: { label: string; children: React
   );
 }
 
+const feeLabelWidth = "w-[96px]";
+
+function FeeSummaryToolbar({
+  discountType,
+  onDiscountTypeChange,
+  discountValue,
+  onDiscountValueChange,
+  exchangeRate,
+  onExchangeRateChange,
+  total,
+}: {
+  discountType: "折扣" | "减免";
+  onDiscountTypeChange: (value: "折扣" | "减免") => void;
+  discountValue: number;
+  onDiscountValueChange: (value: number) => void;
+  exchangeRate: number;
+  onExchangeRateChange: (value: number) => void;
+  total: number;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-10 gap-y-3 text-small">
+      <SummaryField label="优惠方式">
+        <div className="flex gap-4 whitespace-nowrap">
+          <label className="flex cursor-pointer items-center gap-1">
+            <input
+              type="radio"
+              checked={discountType === "折扣"}
+              onChange={() => {
+                onDiscountTypeChange("折扣");
+                onDiscountValueChange(0);
+              }}
+            />
+            折扣
+          </label>
+          <label className="flex cursor-pointer items-center gap-1">
+            <input
+              type="radio"
+              checked={discountType === "减免"}
+              onChange={() => {
+                onDiscountTypeChange("减免");
+                onDiscountValueChange(0);
+              }}
+            />
+            减免
+          </label>
+        </div>
+      </SummaryField>
+      <SummaryField label={discountType === "折扣" ? "折扣率(%)" : "减免金额"}>
+        <AmountInput
+          className="min-w-[200px]"
+          value={discountValue}
+          placeholder={discountType === "折扣" ? "1-100" : "0.00"}
+          onChange={(value) => onDiscountValueChange(discountType === "折扣" ? Math.min(value, 100) : value)}
+        />
+      </SummaryField>
+      <SummaryField label="汇率">
+        <AmountInput
+          className="min-w-[200px]"
+          value={exchangeRate}
+          placeholder="0.00"
+          onChange={onExchangeRateChange}
+        />
+      </SummaryField>
+      <SummaryField label="总价格">
+        <span className="inline-flex min-h-input-md min-w-[120px] items-center rounded-sm bg-bg-page px-3 font-medium tabular-nums text-text-primary">
+          {formatAmount(total)}
+        </span>
+      </SummaryField>
+    </div>
+  );
+}
+
+function FeeSummaryDisplay({ totalPrice }: { totalPrice: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-10 gap-y-3 text-small">
+      <SummaryField label="优惠方式" showColon>
+        <span className="text-text-primary">折扣</span>
+      </SummaryField>
+      <SummaryField label="折扣率(%)" showColon>
+        <span className="tabular-nums text-text-primary">0%</span>
+      </SummaryField>
+      <SummaryField label="汇率" showColon>
+        <span className="tabular-nums text-text-primary">7.12</span>
+      </SummaryField>
+      <SummaryField label="总价格" showColon>
+        <span className="inline-flex min-h-input-md min-w-[120px] items-center rounded-sm bg-bg-page px-3 font-medium tabular-nums text-text-primary">
+          {totalPrice}
+        </span>
+      </SummaryField>
+    </div>
+  );
+}
+
+function SummaryField({ label, children, showColon = false }: { label: string; children: ReactNode; showColon?: boolean }) {
+  return (
+    <div className="flex items-center gap-3 whitespace-nowrap">
+      <span className={cn(feeLabelWidth, "shrink-0 text-left text-text-secondary")}>
+        {label}
+        {showColon ? "：" : ""}
+      </span>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function FeeSectionHeader({ title, summary }: { title: string; summary: ReactNode }) {
+  return (
+    <div className="mb-4 border-b border-border pb-3">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <SectionTitle>{title}</SectionTitle>
+        <div className="min-w-0 xl:flex-1 xl:pl-6">{summary}</div>
+      </div>
+    </div>
+  );
+}
+
+function SchemeMetaRow({
+  provider,
+  serviceLinks,
+  showColon = false,
+}: {
+  provider: string;
+  serviceLinks: string[];
+  showColon?: boolean;
+}) {
+  return (
+    <div className="mb-4 grid gap-4 border-b border-border pb-4 text-small md:grid-cols-2 xl:grid-cols-4 xl:gap-x-10">
+      <div className="flex items-center gap-3 md:col-span-1 xl:col-span-2">
+        <span className={cn(feeLabelWidth, "shrink-0 text-left text-text-secondary")}>物流商{showColon ? "：" : ""}</span>
+        <span className="min-w-0 text-text-primary">{provider}</span>
+      </div>
+      <div className="flex items-center gap-3 md:col-span-1 xl:col-span-2">
+        <span className={cn(feeLabelWidth, "shrink-0 text-left text-text-secondary")}>服务环节{showColon ? "：" : ""}</span>
+        <span className="min-w-0 text-text-primary">{serviceLinks.join("、") || "-"}</span>
+      </div>
+    </div>
+  );
+}
+
+function FeeField({ label, children, showColon = false }: { label: string; children: ReactNode; showColon?: boolean }) {
+  return (
+    <div className="flex w-full items-center gap-3 text-small">
+      <span className={cn(feeLabelWidth, "shrink-0 whitespace-nowrap text-left text-text-secondary")}>
+        {label}
+        {showColon ? "：" : ""}
+      </span>
+      <div className="min-w-[200px] flex-1">{children}</div>
+    </div>
+  );
+}
+
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[112px_1fr] gap-3 text-small">
-      <div className="text-text-secondary">{label}</div>
+      <div className="text-text-secondary">{label}：</div>
       <div className="text-text-primary">{value || "-"}</div>
     </div>
   );
@@ -317,28 +488,30 @@ function AmountInput({
   onChange,
   placeholder = "0.00",
   disabled = false,
+  className,
 }: {
   value: number;
   onChange: (value: number) => void;
   placeholder?: string;
   disabled?: boolean;
+  className?: string;
 }) {
   function update(nextValue: number) {
     onChange(Math.max(nextValue, 0));
   }
 
   return (
-    <div className="flex">
+    <div className={cn("flex w-full min-w-[200px]", className)}>
       <button
         type="button"
-        className="h-input-md w-8 border border-border bg-bg-page text-text-secondary"
+        className="h-input-md w-9 shrink-0 border border-border bg-bg-page text-text-secondary"
         disabled={disabled}
         onClick={() => update(value - 1)}
       >
         -
       </button>
       <Input
-        className="rounded-none text-center"
+        className="min-w-[88px] flex-1 rounded-none px-3 text-left"
         placeholder={placeholder}
         value={formatAmount(value)}
         disabled={disabled}
@@ -346,7 +519,7 @@ function AmountInput({
       />
       <button
         type="button"
-        className="h-input-md w-8 border border-l-0 border-border bg-bg-page text-text-secondary"
+        className="h-input-md w-9 shrink-0 border border-l-0 border-border bg-bg-page text-text-secondary"
         disabled={disabled}
         onClick={() => update(value + 1)}
       >
@@ -368,20 +541,23 @@ function QuoteRateForm({
   onSubmit: () => void;
 }) {
   const shippingMode: ShippingMode = mode.includes("fcl") ? "整柜" : "散货";
+  const initialPricingMode =
+    record?.pricingMode === "按重量区间报价" ? "按重量段报价" : record?.pricingMode;
   const [logisticsChannel, setLogisticsChannel] = useState(record?.logisticsChannel ?? "");
   const [origin, setOrigin] = useState(record?.origin ?? "");
   const [destination, setDestination] = useState(record?.destination ?? "");
-  const [carrier, setCarrier] = useState(record?.carrier ?? "");
+  const [shippingCompany, setShippingCompany] = useState(record?.carrier ?? "");
   const [currency, setCurrency] = useState(record?.currency ?? "");
   const [taxIncluded, setTaxIncluded] = useState(record?.taxIncluded ?? "是");
-  const [pricingMode, setPricingMode] = useState(record?.pricingMode ?? (shippingMode === "整柜" ? "整柜报价" : "按重量区间报价"));
-  const [providerSchemes, setProviderSchemes] = useState<Array<{ id: string; provider: string; serviceLinks: string[] }>>(() => {
+  const [validRange, setValidRange] = useState<DateRangeValue>({ start: record?.validFrom ?? "", end: record?.validTo ?? "" });
+  const [pricingMode, setPricingMode] = useState(initialPricingMode ?? (shippingMode === "整柜" ? "整柜报价" : "按重量段报价"));
+  const [providerSchemes, setProviderSchemes] = useState<Array<{ id: string; provider: string; serviceLinks: string[]; feeItems: string[] }>>(() => {
     const schemes = record?.logisticsChannel ? channelQuoteProviderSchemes[record.logisticsChannel] : [];
     if (schemes?.length) {
       return schemes.map((scheme, index) => ({ id: `scheme-${index + 1}`, ...scheme }));
     }
     const providers = record?.logisticsProvider ? record.logisticsProvider.split("、") : [];
-    return providers.map((provider, index) => ({ id: `scheme-${index + 1}`, provider, serviceLinks: [] }));
+    return providers.map((provider, index) => ({ id: `scheme-${index + 1}`, provider, serviceLinks: [], feeItems: [] }));
   });
 
   useEffect(() => {
@@ -389,13 +565,17 @@ function QuoteRateForm({
     setProviderSchemes(schemes.map((scheme, index) => ({ id: `scheme-${index + 1}`, ...scheme })));
   }, [logisticsChannel]);
 
+  function handleChannelChange(value: string) {
+    setLogisticsChannel(value);
+  }
+
   return (
     <div className="space-y-4 pb-16">
       <Card>
         <SectionTitle>基本信息</SectionTitle>
-        <div className="mt-4 grid gap-x-10 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-4 grid gap-x-10 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
           <FormRow label="物流渠道" required>
-            <Select value={logisticsChannel} placeholder="请选择物流渠道" options={optionList(logisticsChannelOptions)} onValueChange={setLogisticsChannel} />
+            <Select value={logisticsChannel} placeholder="请选择物流渠道" options={optionList(logisticsChannelOptions)} onValueChange={handleChannelChange} />
           </FormRow>
           <FormRow label="发货地" required>
             <AddressCascade value={origin} placeholder="请选择发货地" onChange={setOrigin} />
@@ -403,34 +583,56 @@ function QuoteRateForm({
           <FormRow label="目的地" required>
             <AddressCascade value={destination} placeholder="请选择目的地" onChange={setDestination} />
           </FormRow>
-          <FormRow label="舱司">
-            <Select value={carrier} placeholder="请选择舱司" options={optionList(carrierOptions)} onValueChange={setCarrier} />
+          <FormRow label="船司" required>
+            <Input value={shippingCompany} placeholder="请输入船司" maxLength={255} onChange={(event) => setShippingCompany(event.target.value)} />
           </FormRow>
           <FormRow label="币种" required>
             <Select value={currency} placeholder="请选择币种" options={optionList(currencyOptions)} onValueChange={setCurrency} />
           </FormRow>
           {shippingMode === "散货" ? (
             <FormRow label="计价方式" required>
-              <Select value={pricingMode} options={optionList(["按重量区间报价", "按方数报价"])} onValueChange={setPricingMode} />
+              <div className="flex gap-4 text-small">
+                <label>
+                  <input
+                    type="radio"
+                    className="mr-1"
+                    checked={pricingMode === "按重量段报价"}
+                    onChange={() => setPricingMode("按重量段报价")}
+                  />
+                  按重量段报价
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    className="mr-1"
+                    checked={pricingMode === "按方数报价"}
+                    onChange={() => setPricingMode("按方数报价")}
+                  />
+                  按方数报价
+                </label>
+              </div>
             </FormRow>
           ) : null}
           <FormRow label="是否含税" required>
-            <Select value={taxIncluded} options={optionList(["是", "否"])} onValueChange={(value) => setTaxIncluded(value as "是" | "否")} />
+            <div className="flex gap-4 text-small">
+              <label>
+                <input type="radio" className="mr-1" checked={taxIncluded === "是"} onChange={() => setTaxIncluded("是")} />
+                是
+              </label>
+              <label>
+                <input type="radio" className="mr-1" checked={taxIncluded === "否"} onChange={() => setTaxIncluded("否")} />
+                否
+              </label>
+            </div>
           </FormRow>
           <FormRow label="价格有效期" required>
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-              <Input type="date" defaultValue={record?.validFrom} />
-              <span className="text-text-secondary">-</span>
-              <Input type="date" defaultValue={record?.validTo} />
-            </div>
+            <DateRangePicker value={validRange} onChange={setValidRange} />
           </FormRow>
         </div>
       </Card>
 
       <Card>
-        <div className="flex items-center justify-between">
-          <SectionTitle>物流商报价方案</SectionTitle>
-        </div>
+        <SectionTitle>物流商报价方案</SectionTitle>
         {!logisticsChannel ? (
           <div className="mt-3 rounded-sm border border-warning bg-warning/10 px-3 py-2 text-small text-warning">
             请先选择物流渠道，系统会根据物流渠道自动带出对应物流商报价方案。
@@ -438,28 +640,17 @@ function QuoteRateForm({
         ) : null}
         {logisticsChannel && providerSchemes.length === 0 ? (
           <div className="mt-3 rounded-sm border border-warning bg-warning/10 px-3 py-2 text-small text-warning">
-            当前物流渠道暂未配置服务商，请先在物流渠道页面维护服务商配置。
+            当前物流渠道暂未配置物流商，请先在物流渠道页面维护物流商配置。
           </div>
         ) : null}
         <div className="mt-4 space-y-4">
-          {providerSchemes.map((scheme, index) => (
+          {providerSchemes.map((scheme) => (
             <div key={scheme.id} className="rounded-sm border border-border p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="font-medium text-text-primary">报价方案 {index + 1}</div>
-                <div className="text-small text-text-muted">由物流渠道服务商配置带出</div>
-              </div>
-              <div className="mb-4 grid gap-x-10 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
-                <FormRow label="物流商" required>
-                  <Input value={scheme.provider} disabled />
-                </FormRow>
-                <FormRow label="服务环节" required>
-                  <Input value={scheme.serviceLinks.join("、") || "-"} disabled />
-                </FormRow>
-              </div>
+              <SchemeMetaRow provider={scheme.provider} serviceLinks={scheme.serviceLinks} />
               {shippingMode === "整柜" ? (
-                <FullContainerFeeSection serviceLinks={scheme.serviceLinks} />
+                <FullContainerFeeSection feeItems={scheme.feeItems} />
               ) : (
-                <LooseCargoFeeSection serviceLinks={scheme.serviceLinks} />
+                <LooseCargoFeeSection feeItems={scheme.feeItems} pricingMode={pricingMode} />
               )}
             </div>
           ))}
@@ -474,13 +665,12 @@ function QuoteRateForm({
   );
 }
 
-function getFeeLabels(serviceLinks: string[], fallback: string[]) {
-  const labels = serviceLinks.flatMap((link) => feeLabelsByServiceLink[link] ?? []);
-  return labels.length ? Array.from(new Set(labels)) : fallback;
+function getFeeLabels(feeItems: string[]) {
+  return Array.from(new Set(feeItems));
 }
 
-function FullContainerFeeSection({ serviceLinks }: { serviceLinks: string[] }) {
-  const feeLabels = getFeeLabels(serviceLinks, ["港杂费", "订舱费", "报关费", "派送费", "附加费"]);
+function FullContainerFeeSection({ feeItems }: { feeItems: string[] }) {
+  const [feeLabels, setFeeLabels] = useState(getFeeLabels(feeItems));
   const [fees, setFees] = useState<Record<string, number>>(
     Object.fromEntries(feeLabels.map((label) => [label, 0])),
   );
@@ -490,185 +680,155 @@ function FullContainerFeeSection({ serviceLinks }: { serviceLinks: string[] }) {
   const subtotal = sumValues(fees);
   const total = applyDiscount(subtotal, discountType, discountValue);
 
+  useEffect(() => {
+    const nextLabels = getFeeLabels(feeItems);
+    setFeeLabels(nextLabels);
+    setFees((current) => Object.fromEntries(nextLabels.map((label) => [label, current[label] ?? 0])));
+  }, [feeItems]);
+
   return (
     <div>
-      <SectionTitle>费用明细</SectionTitle>
-      <div className="mt-4 grid gap-x-16 gap-y-3 md:grid-cols-2 xl:grid-cols-3">
+      <FeeSectionHeader
+        title="费用明细"
+        summary={
+          <FeeSummaryToolbar
+            discountType={discountType}
+            onDiscountTypeChange={setDiscountType}
+            discountValue={discountValue}
+            onDiscountValueChange={setDiscountValue}
+            exchangeRate={exchangeRate}
+            onExchangeRateChange={setExchangeRate}
+            total={total}
+          />
+        }
+      />
+      <div className="grid grid-cols-1 gap-y-4 md:grid-cols-2 xl:grid-cols-4 xl:gap-x-10 xl:gap-y-4">
         {feeLabels.map((label) => (
-          <FormRow key={label} label={label}>
+          <FeeField key={label} label={label}>
             <AmountInput
               value={fees[label] ?? 0}
               onChange={(value) => setFees((current) => ({ ...current, [label]: value }))}
             />
-          </FormRow>
+          </FeeField>
         ))}
-        <FormRow label="优惠方式" required>
-          <div className="flex gap-4 text-small">
-            <label>
-              <input
-                type="radio"
-                className="mr-1"
-                checked={discountType === "折扣"}
-                onChange={() => {
-                  setDiscountType("折扣");
-                  setDiscountValue(0);
-                }}
-              />
-              折扣
-            </label>
-            <label>
-              <input
-                type="radio"
-                className="mr-1"
-                checked={discountType === "减免"}
-                onChange={() => {
-                  setDiscountType("减免");
-                  setDiscountValue(0);
-                }}
-              />
-              减免
-            </label>
-          </div>
-        </FormRow>
-        <FormRow label={discountType === "折扣" ? "折扣率(%)" : "减免金额"} required>
-          <AmountInput
-            value={discountValue}
-            placeholder={discountType === "折扣" ? "1-100之间" : "0.00"}
-            onChange={(value) => setDiscountValue(discountType === "折扣" ? Math.min(value, 100) : value)}
-          />
-        </FormRow>
-        <FormRow label="汇率">
-          <AmountInput value={exchangeRate} placeholder="保留两位小数" onChange={setExchangeRate} />
-        </FormRow>
-        <FormRow label="总价格">
-          <Input disabled value={formatAmount(total)} />
-        </FormRow>
       </div>
     </div>
   );
 }
 
-function LooseCargoFeeSection({ serviceLinks }: { serviceLinks: string[] }) {
-  const extraFeeLabels = getFeeLabels(serviceLinks, ["附加费"]).filter((label) => label !== "海运费");
+function LooseCargoFeeSection({ feeItems, pricingMode }: { feeItems: string[]; pricingMode: string }) {
+  const [extraFeeLabels, setExtraFeeLabels] = useState(getFeeLabels(feeItems));
   const [rows, setRows] = useState([{ id: "r1", price: 0 }]);
   const [extraFees, setExtraFees] = useState<Record<string, number>>(
-    Object.fromEntries([...extraFeeLabels, "汇率", "燃油费(%)"].map((label) => [label, 0])),
+    Object.fromEntries([...extraFeeLabels, "燃油费(%)"].map((label) => [label, 0])),
   );
   const [discountType, setDiscountType] = useState<"折扣" | "减免">("折扣");
   const [discountValue, setDiscountValue] = useState(0);
+  const [exchangeRate, setExchangeRate] = useState(0);
   const feeSubtotal =
     rows.reduce((sum, row) => sum + row.price, 0) +
     extraFeeLabels.reduce((sum, label) => sum + (extraFees[label] ?? 0), 0) +
     (extraFees["燃油费(%)"] ?? 0);
   const total = applyDiscount(feeSubtotal, discountType, discountValue);
+  const isVolumePricing = pricingMode === "按方数报价";
+  const rangeLabel = isVolumePricing ? "方数范围" : "重量范围";
+  const rangeUnit = isVolumePricing ? "m³" : "KG";
+  const priceUnit = isVolumePricing ? "/m³" : "/KG";
+
+  useEffect(() => {
+    const nextLabels = getFeeLabels(feeItems);
+    setExtraFeeLabels(nextLabels);
+    setExtraFees((current) =>
+      Object.fromEntries([...nextLabels, "燃油费(%)"].map((label) => [label, current[label] ?? 0])),
+    );
+  }, [feeItems]);
 
   return (
-    <div>
-      <SectionTitle>按重量区间价格</SectionTitle>
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-left text-small">
-          <thead className="bg-bg-page text-text-muted">
-            <tr>
-              <th className={tableHeadCell}>重量范围</th>
-              <th className={tableHeadCell}>价格</th>
-              <th className={tableHeadCell}>操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border bg-white">
-            {rows.map((row, index) => (
-              <tr key={row.id}>
-                <td className="px-3 py-3">
-                  <div className="flex items-center gap-2">
-                    <Input className="w-[120px]" defaultValue="0.00" />
-                    <span>KG ~</span>
-                    <Input className="w-[120px]" />
-                    <span>KG</span>
-                  </div>
-                </td>
-                <td className="px-3 py-3">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      className="w-[160px]"
-                      value={formatAmount(row.price)}
-                      onChange={(event) =>
-                        setRows((current) =>
-                          current.map((item) =>
-                            item.id === row.id ? { ...item, price: Number.parseFloat(event.target.value) || 0 } : item,
-                          ),
-                        )
-                      }
-                    />
-                    <span>/KG</span>
-                  </div>
-                </td>
-                <td className="px-3 py-3">
-                  <button type="button" className="mr-3 border-0 bg-transparent p-0 text-primary hover:underline" onClick={() => setRows((current) => [...current, { id: `r${current.length + 1}`, price: 0 }])}>
-                    增加一行
-                  </button>
-                  <button
-                    type="button"
-                    className="border-0 bg-transparent p-0 text-danger hover:underline disabled:text-text-placeholder disabled:no-underline"
-                    disabled={rows.length === 1}
-                    onClick={() => setRows((current) => (current.length === 1 ? current : current.filter((_, rowIndex) => rowIndex !== index)))}
-                  >
-                    删除
-                  </button>
-                </td>
+    <div className="space-y-4">
+      <div>
+        <div className="mb-3">
+          <SectionTitle>{isVolumePricing ? "按方数报价" : "按重量段报价"}</SectionTitle>
+        </div>
+        <div className="overflow-x-auto rounded-sm border border-border">
+          <table className="w-full min-w-[900px] border-collapse text-left text-small">
+            <thead className="bg-bg-page text-text-muted">
+              <tr>
+                <th className={tableHeadCell}>{rangeLabel}</th>
+                <th className={tableHeadCell}>价格</th>
+                <th className={tableHeadCell}>操作</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border bg-white">
+              {rows.map((row, index) => (
+                <tr key={row.id}>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2">
+                      <Input className="w-[120px]" defaultValue="0.00" />
+                      <span>{rangeUnit} ~</span>
+                      <Input className="w-[120px]" />
+                      <span>{rangeUnit}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        className="w-[160px]"
+                        value={formatAmount(row.price)}
+                        onChange={(event) =>
+                          setRows((current) =>
+                            current.map((item) =>
+                              item.id === row.id ? { ...item, price: Number.parseFloat(event.target.value) || 0 } : item,
+                            ),
+                          )
+                        }
+                      />
+                      <span>{priceUnit}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <button type="button" className="mr-3 border-0 bg-transparent p-0 text-primary hover:underline" onClick={() => setRows((current) => [...current, { id: `r${current.length + 1}`, price: 0 }])}>
+                      增加一行
+                    </button>
+                    <button
+                      type="button"
+                      className="border-0 bg-transparent p-0 text-danger hover:underline disabled:text-text-placeholder disabled:no-underline"
+                      disabled={rows.length === 1}
+                      onClick={() => setRows((current) => (current.length === 1 ? current : current.filter((_, rowIndex) => rowIndex !== index)))}
+                    >
+                      删除
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div className="mt-4 grid gap-x-16 gap-y-3 md:grid-cols-2 xl:grid-cols-3">
-        <FormRow label="优惠方式" required>
-          <div className="flex gap-4 text-small">
-            <label>
-              <input
-                type="radio"
-                className="mr-1"
-                checked={discountType === "折扣"}
-                onChange={() => {
-                  setDiscountType("折扣");
-                  setDiscountValue(0);
-                }}
-              />
-              折扣
-            </label>
-            <label>
-              <input
-                type="radio"
-                className="mr-1"
-                checked={discountType === "减免"}
-                onChange={() => {
-                  setDiscountType("减免");
-                  setDiscountValue(0);
-                }}
-              />
-              减免
-            </label>
-          </div>
-        </FormRow>
-        <FormRow label={discountType === "折扣" ? "折扣率(%)" : "减免金额"}>
-          <AmountInput
-            value={discountValue}
-            placeholder={discountType === "折扣" ? "1-100之间" : "0.00"}
-            onChange={(value) => setDiscountValue(discountType === "折扣" ? Math.min(value, 100) : value)}
-          />
-        </FormRow>
-        {extraFeeLabels.map((label) => (
-          <FormRow key={label} label={label}>
-            <AmountInput value={extraFees[label] ?? 0} onChange={(value) => setExtraFees((current) => ({ ...current, [label]: value }))} />
-          </FormRow>
-        ))}
-        <FormRow label="汇率">
-          <AmountInput value={extraFees["汇率"]} placeholder="保留两位小数" onChange={(value) => setExtraFees((current) => ({ ...current, "汇率": value }))} />
-        </FormRow>
-        <FormRow label="燃油费(%)">
-          <AmountInput value={extraFees["燃油费(%)"]} onChange={(value) => setExtraFees((current) => ({ ...current, "燃油费(%)": value }))} />
-        </FormRow>
-        <FormRow label="总价格">
-          <Input disabled value={formatAmount(total)} />
-        </FormRow>
+      <div>
+        <FeeSectionHeader
+          title="费用明细"
+          summary={
+            <FeeSummaryToolbar
+              discountType={discountType}
+              onDiscountTypeChange={setDiscountType}
+              discountValue={discountValue}
+              onDiscountValueChange={setDiscountValue}
+              exchangeRate={exchangeRate}
+              onExchangeRateChange={setExchangeRate}
+              total={total}
+            />
+          }
+        />
+        <div className="grid grid-cols-1 gap-y-4 md:grid-cols-2 xl:grid-cols-4 xl:gap-x-10 xl:gap-y-4">
+          {extraFeeLabels.map((label) => (
+            <FeeField key={label} label={label}>
+              <AmountInput value={extraFees[label] ?? 0} onChange={(value) => setExtraFees((current) => ({ ...current, [label]: value }))} />
+            </FeeField>
+          ))}
+          <FeeField label="燃油费(%)">
+            <AmountInput value={extraFees["燃油费(%)"]} onChange={(value) => setExtraFees((current) => ({ ...current, "燃油费(%)": value }))} />
+          </FeeField>
+        </div>
       </div>
     </div>
   );
@@ -685,7 +845,7 @@ function QuoteRateDetail({
 }) {
   const providerSchemes =
     channelQuoteProviderSchemes[record.logisticsChannel] ??
-    record.logisticsProvider.split("、").map((provider) => ({ provider, serviceLinks: [] }));
+    record.logisticsProvider.split("、").map((provider) => ({ provider, serviceLinks: [], feeItems: [] }));
 
   return (
     <div className="space-y-4">
@@ -705,16 +865,14 @@ function QuoteRateDetail({
           <div className="mt-4 grid gap-x-10 gap-y-5 md:grid-cols-2 xl:grid-cols-4">
             <InfoItem label="报价ID" value={record.quoteId} />
             <InfoItem label="发货方式" value={record.shippingMode} />
-            <InfoItem label="物流商" value={record.logisticsProvider} />
             <InfoItem label="物流渠道" value={record.logisticsChannel} />
             <InfoItem label="发货地" value={record.origin} />
             <InfoItem label="目的地" value={record.destination} />
-            <InfoItem label="舱司" value={record.carrier} />
+            <InfoItem label="船司" value={record.carrier} />
             <InfoItem label="币种" value={record.currency} />
             <InfoItem label="是否含税" value={record.taxIncluded} />
             <InfoItem label="价格有效期" value={`${record.validFrom} ~ ${record.validTo}`} />
             <InfoItem label="计价方式" value={record.pricingMode} />
-            <InfoItem label="报价" value={record.totalPrice} />
           </div>
         </div>
       </Card>
@@ -722,47 +880,20 @@ function QuoteRateDetail({
         <SectionTitle>物流商报价方案</SectionTitle>
         <div className="mt-4 space-y-4">
           {providerSchemes.map((scheme, schemeIndex) => {
-            const feeLabels =
-              record.shippingMode === "整柜"
-                ? getFeeLabels(scheme.serviceLinks, ["港杂费", "订舱费", "报关费", "派送费", "附加费"])
-                : getFeeLabels(scheme.serviceLinks, ["附加费"]);
-            const displayRows =
-              record.shippingMode === "整柜"
-                ? feeLabels
-                : ["0-20KG", "20-100KG", "100KG以上", ...feeLabels.filter((label) => label !== "海运费")];
+            const feeLabels = getFeeLabels(scheme.feeItems);
 
             return (
               <div key={`${scheme.provider}-${schemeIndex}`} className="rounded-sm border border-border p-4">
-                <div className="mb-4 grid gap-x-10 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
-                  <InfoItem label="物流商" value={scheme.provider} />
-                  <InfoItem label="服务环节" value={scheme.serviceLinks.join("、") || "-"} />
-                  <InfoItem label="计价方式" value={record.pricingMode} />
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[900px] border-collapse text-left text-small">
-                    <thead className="bg-bg-page text-text-muted">
-                      <tr>
-                        <th className={tableHeadCell}>{record.shippingMode === "整柜" ? "费用项" : "报价项"}</th>
-                        <th className={tableHeadCell}>价格</th>
-                        <th className={tableHeadCell}>优惠方式</th>
-                        <th className={tableHeadCell}>折扣率/减免金额</th>
-                        <th className={tableHeadCell}>汇率</th>
-                        <th className={tableHeadCell}>备注</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border bg-white">
-                      {displayRows.map((item, index) => (
-                        <tr key={item}>
-                          <td className="px-3 py-3">{item}</td>
-                          <td className="px-3 py-3">{index === 0 ? record.totalPrice : "0.00"}</td>
-                          <td className="px-3 py-3">折扣</td>
-                          <td className="px-3 py-3">0%</td>
-                          <td className="px-3 py-3">7.12</td>
-                          <td className="px-3 py-3">-</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <SchemeMetaRow provider={scheme.provider} serviceLinks={scheme.serviceLinks} showColon />
+                <FeeSectionHeader title="费用明细" summary={<FeeSummaryDisplay totalPrice={record.totalPrice} />} />
+                <div className="grid grid-cols-1 gap-y-4 md:grid-cols-2 xl:grid-cols-4 xl:gap-x-10 xl:gap-y-4">
+                  {feeLabels.map((label, index) => (
+                    <FeeField key={label} label={label} showColon>
+                      <span className="inline-flex min-h-input-md min-w-[200px] items-center tabular-nums text-text-primary">
+                        {index === 0 ? record.totalPrice : "0.00"}
+                      </span>
+                    </FeeField>
+                  ))}
                 </div>
               </div>
             );
@@ -805,7 +936,7 @@ export function LogisticsQuoteRatePage({
   const [pageSize, setPageSize] = useState(20);
 
   const providerFilterOptions = useMemo(
-    () => uniqueOptions(quoteRateRecords.flatMap((record) => record.logisticsProvider.split("、"))),
+    () => uniqueOptions(quoteRateRecords.map((record) => getPrimaryLogisticsProvider(record.logisticsProvider))),
     [],
   );
   const channelFilterOptions = useMemo(() => uniqueOptions(quoteRateRecords.map((record) => record.logisticsChannel)), []);
@@ -813,8 +944,8 @@ export function LogisticsQuoteRatePage({
 
   const filteredRecords = useMemo(() => {
     return quoteRateRecords.filter((record) => {
-      const recordProviders = record.logisticsProvider.split("、");
-      const matchesProvider = providers.length === 0 || providers.some((provider) => recordProviders.includes(provider));
+      const recordProvider = getPrimaryLogisticsProvider(record.logisticsProvider);
+      const matchesProvider = providers.length === 0 || providers.includes(recordProvider);
       const matchesChannel = channels.length === 0 || channels.includes(record.logisticsChannel);
       const matchesOrigin = !origin || record.origin === origin;
       const matchesDestination = !destination || record.destination === destination;
@@ -1006,7 +1137,7 @@ export function LogisticsQuoteRatePage({
                   <td className="whitespace-nowrap px-3 py-3">
                     <Badge tone={record.shippingMode === "整柜" ? "processing" : "success"}>{record.shippingMode}</Badge>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3">{record.logisticsProvider}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{getPrimaryLogisticsProvider(record.logisticsProvider)}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.logisticsChannel}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.origin}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.destination}</td>

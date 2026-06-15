@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -6,6 +7,7 @@ import { Input } from "../components/ui/input";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
+import { cn } from "../lib/cn";
 
 type LogisticsChannelStatus = "启用" | "禁用";
 
@@ -211,6 +213,32 @@ const providerOptions = [
   { label: "宁波赛蓝供应链服务有限公司", value: "宁波赛蓝供应链服务有限公司" },
 ];
 
+const providerFeeItemOptions: Record<string, string[]> = {
+  "义乌市双捷国际货运代理有限公司": ["提货费", "报关费", "海运费", "订舱费", "港杂费", "单证操作费"],
+  "浙江融盛国际物流有限公司": ["清关费", "税金", "派送费", "附加费"],
+  "深圳市以达物流有限公司(谷仓海外仓)": ["派送费", "附加费", "仓储操作费", "尾程处理费"],
+  "宁波赛蓝供应链服务有限公司": ["海运费", "订舱费", "港杂费", "清关费"],
+};
+
+function normalizeProviderName(value: string) {
+  if (providerFeeItemOptions[value]) {
+    return value;
+  }
+  if (value.includes("义乌") || value.includes("双捷")) {
+    return "义乌市双捷国际货运代理有限公司";
+  }
+  if (value.includes("浙江融盛")) {
+    return "浙江融盛国际物流有限公司";
+  }
+  if (value.includes("深圳") || value.includes("以达") || value.includes("USPS") || value.includes("FedEx")) {
+    return "深圳市以达物流有限公司(谷仓海外仓)";
+  }
+  if (value.includes("宁波") || value.includes("赛蓝")) {
+    return "宁波赛蓝供应链服务有限公司";
+  }
+  return value;
+}
+
 const routeTree = [
   {
     country: "加拿大（CAN）",
@@ -267,13 +295,15 @@ function FormRow({
   label,
   required,
   children,
+  className,
 }: {
   label: string;
   required?: boolean;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className={cn("flex items-center gap-2", className)}>
       <div className="w-[112px] shrink-0 text-right text-small text-text-secondary">
         {required ? <span className="mr-1 text-danger">*</span> : null}
         {label}
@@ -286,7 +316,7 @@ function FormRow({
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[112px_1fr] gap-3 text-small">
-      <div className="text-text-secondary">{label}</div>
+      <div className="text-text-secondary">{label}：</div>
       <div className="text-text-primary">{value || "-"}</div>
     </div>
   );
@@ -377,6 +407,181 @@ function RouteSelector({
   );
 }
 
+function FeeItemMultiSelect({
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  value: string[];
+  options: string[];
+  disabled?: boolean;
+  onChange: (value: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({
+    position: "fixed",
+    top: 0,
+    left: 0,
+    opacity: 0,
+    pointerEvents: "none",
+  });
+  const [menuMaxHeight, setMenuMaxHeight] = useState(240);
+  const label = value.length ? value.join("、") : "请选择费用项";
+  const canClear = !disabled && value.length > 0;
+
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function updateMenuPosition() {
+      const trigger = triggerRef.current;
+      if (!trigger) {
+        return;
+      }
+      const rect = trigger.getBoundingClientRect();
+      const viewportPadding = 8;
+      const menuOffset = 4;
+      const estimatedHeight = Math.min(Math.max(options.length * 34 + 16, 80), 240);
+      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+      const spaceAbove = rect.top - viewportPadding;
+      const placeBelow = spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove;
+      const availableHeight = Math.max(80, (placeBelow ? spaceBelow : spaceAbove) - menuOffset);
+      const menuHeight = Math.min(estimatedHeight, availableHeight);
+      const width = Math.max(rect.width, 220);
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - viewportPadding - width);
+      const left = Math.min(Math.max(rect.left, viewportPadding), maxLeft);
+      const top = placeBelow ? rect.bottom + menuOffset : rect.top - menuOffset - menuHeight;
+
+      setMenuMaxHeight(availableHeight);
+      setMenuStyle({
+        position: "fixed",
+        top: Math.max(viewportPadding, top),
+        left,
+        width,
+        zIndex: 80,
+        opacity: 1,
+        pointerEvents: "auto",
+      });
+    }
+
+    updateMenuPosition();
+    const frameId = window.requestAnimationFrame(updateMenuPosition);
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open, options.length]);
+
+  function toggleFeeItem(feeItem: string) {
+    const nextValue = value.includes(feeItem)
+      ? value.filter((item) => item !== feeItem)
+      : [...value, feeItem];
+    onChange(nextValue);
+  }
+
+  const visibleTags = value.slice(0, 1);
+  const hiddenCount = Math.max(value.length - visibleTags.length, 0);
+
+  return (
+    <div ref={rootRef} className="group relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={disabled}
+        className={`field-control flex w-full items-center justify-between gap-2 pr-10 text-left ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
+        onClick={() => {
+          if (!disabled) {
+            setOpen((current) => !current);
+          }
+        }}
+      >
+        {value.length ? (
+          <span className="flex min-w-0 items-center gap-1">
+            {visibleTags.map((item) => (
+              <span key={item} className="inline-flex max-w-[120px] items-center rounded-sm bg-bg-page px-2 py-0.5 text-small text-text-primary">
+                <span className="truncate">{item}</span>
+              </span>
+            ))}
+            {hiddenCount > 0 ? (
+              <span className="inline-flex shrink-0 items-center rounded-sm bg-bg-page px-2 py-0.5 text-small text-text-primary">
+                + {hiddenCount}
+              </span>
+            ) : null}
+          </span>
+        ) : (
+          <span className="truncate text-text-placeholder">{label}</span>
+        )}
+        <span className={`absolute right-3 text-text-muted ${canClear ? "group-hover:opacity-0" : ""}`}>{open ? "⌃" : "⌄"}</span>
+      </button>
+      {canClear ? (
+        <button
+          type="button"
+          aria-label="清空费用项"
+          className="absolute right-3 top-1/2 hidden h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white text-text-muted hover:border-primary hover:text-primary group-hover:flex"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onChange([]);
+            setOpen(false);
+          }}
+        >
+          ×
+        </button>
+      ) : null}
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div ref={menuRef} style={menuStyle} className="rounded-sm border border-border bg-white p-1 shadow-md">
+              <div className="overflow-auto py-1" style={{ maxHeight: menuMaxHeight }}>
+                {options.map((option) => {
+                  const checked = value.includes(option);
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-sm px-3 text-left text-small transition hover:bg-bg-hover ${
+                        checked ? "font-medium text-primary" : "text-text-primary"
+                      }`}
+                      onClick={() => toggleFeeItem(option)}
+                    >
+                      <span className="truncate">{option}</span>
+                      <span className="w-4 shrink-0 text-primary">{checked ? "✓" : ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
 function LogisticsChannelForm({
   mode,
   record,
@@ -395,21 +600,43 @@ function LogisticsChannelForm({
   const [status, setStatus] = useState<LogisticsChannelStatus>(record?.status ?? "启用");
   const [remark, setRemark] = useState(record?.remark ?? "");
   const [serviceRows, setServiceRows] = useState(() => {
-    const partners = record?.carrierPartners.length ? record.carrierPartners : [""];
-    return partners.map((partner, index) => ({
-      id: `service-${index + 1}`,
-      partner,
-      serviceLink: ["国内揽收", "干线运输", "清关", "尾程派送"][index] ?? "",
-      feeSegment: record?.feeSegments[index] ?? "",
+    const baseProvider = normalizeProviderName(record?.logisticsProvider ?? "");
+    const additionalPartners = record?.carrierPartners.length ? record.carrierPartners.slice(1) : [];
+    const primaryRow = {
+      id: "service-1",
+      partner: baseProvider,
+      serviceLink: ["国内揽收", "干线运输", "清关", "尾程派送"][0] ?? "",
+      feeItems: record?.feeSegments[0]?.split("、").map((item) => item.split("-")[0]).filter(Boolean) ?? [],
+      remark: "",
+    };
+    const additionalRows = additionalPartners.map((partner, index) => ({
+      id: `service-${index + 2}`,
+      partner: normalizeProviderName(partner),
+      serviceLink: ["国内揽收", "干线运输", "清关", "尾程派送"][index + 1] ?? "",
+      feeItems: record?.feeSegments[index + 1]?.split("、").map((item) => item.split("-")[0]).filter(Boolean) ?? [],
       remark: "",
     }));
+    return [primaryRow, ...additionalRows];
   });
+
+  useEffect(() => {
+    setServiceRows((current) => {
+      if (current.length === 0) {
+        return [{ id: "service-1", partner: logisticsProvider, serviceLink: "", feeItems: [], remark: "" }];
+      }
+      const [firstRow, ...restRows] = current;
+      if (firstRow.partner === logisticsProvider) {
+        return current;
+      }
+      return [{ ...firstRow, partner: logisticsProvider, feeItems: [] }, ...restRows];
+    });
+  }, [logisticsProvider]);
 
   return (
     <div className="space-y-4 pb-16">
       <Card>
         <SectionTitle>基本信息</SectionTitle>
-        <div className="mt-4 grid gap-x-10 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-4 grid gap-x-10 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
           <FormRow label="物流商" required>
             <Select value={logisticsProvider} placeholder="请选择物流商" options={providerOptions} onValueChange={setLogisticsProvider} />
           </FormRow>
@@ -434,26 +661,26 @@ function LogisticsChannelForm({
           <FormRow label="材积参数" required>
             <Input defaultValue={record?.volumeFactor} placeholder="请输入材积参数" />
           </FormRow>
-          <FormRow label="备注">
+          <FormRow label="备注" className="xl:col-span-2 items-start">
             <Textarea className="min-h-[72px]" maxLength={1000} value={remark} placeholder="请输入备注" onChange={(event) => setRemark(event.target.value)} />
           </FormRow>
         </div>
       </Card>
 
       <Card>
-        <div className="flex items-center justify-between">
-          <SectionTitle>服务商配置</SectionTitle>
+        <SectionTitle>物流商配置</SectionTitle>
+        <div className="mt-4">
           <Button
             variant="primary"
             size="sm"
             onClick={() =>
               setServiceRows((current) => [
                 ...current,
-                { id: `service-${current.length + 1}`, partner: "", serviceLink: "", feeSegment: "", remark: "" },
+                { id: `service-${current.length + 1}`, partner: "", serviceLink: "", feeItems: [], remark: "" },
               ])
             }
           >
-            添加服务商
+            添加物流商
           </Button>
         </div>
         <div className="mt-4 overflow-x-auto">
@@ -461,9 +688,9 @@ function LogisticsChannelForm({
             <thead className="bg-bg-page text-text-muted">
               <tr>
                 <th className={tableHeadCell}>序号</th>
-                <th className={tableHeadCell}>服务商</th>
+                <th className={tableHeadCell}>物流商</th>
                 <th className={tableHeadCell}>服务环节</th>
-                <th className={tableHeadCell}>计费分段</th>
+                <th className={tableHeadCell}>费用项</th>
                 <th className={tableHeadCell}>备注</th>
                 <th className={tableHeadCell}>操作</th>
               </tr>
@@ -473,13 +700,37 @@ function LogisticsChannelForm({
                 <tr key={row.id}>
                   <td className="px-3 py-3">{index + 1}</td>
                   <td className="px-3 py-3">
-                    <Input value={row.partner} placeholder="请输入服务商" onChange={(event) => setServiceRows((current) => current.map((item) => item.id === row.id ? { ...item, partner: event.target.value } : item))} />
+                    {index === 0 ? (
+                      <Input value={logisticsProvider} placeholder="请先选择基础信息中的物流商" disabled />
+                    ) : (
+                      <Select
+                        value={row.partner}
+                        placeholder="请选择物流商"
+                        options={providerOptions}
+                        onValueChange={(value) =>
+                          setServiceRows((current) =>
+                            current.map((item) =>
+                              item.id === row.id ? { ...item, partner: value, feeItems: [] } : item,
+                            ),
+                          )
+                        }
+                      />
+                    )}
                   </td>
                   <td className="px-3 py-3">
                     <Select value={row.serviceLink} placeholder="请选择服务环节" options={optionList(["国内揽收", "干线运输", "清关", "尾程派送"])} onValueChange={(value) => setServiceRows((current) => current.map((item) => item.id === row.id ? { ...item, serviceLink: value } : item))} />
                   </td>
                   <td className="px-3 py-3">
-                    <Input value={row.feeSegment} placeholder="请输入计费分段" onChange={(event) => setServiceRows((current) => current.map((item) => item.id === row.id ? { ...item, feeSegment: event.target.value } : item))} />
+                    <FeeItemMultiSelect
+                      value={row.feeItems}
+                      disabled={!row.partner}
+                      options={providerFeeItemOptions[row.partner] ?? []}
+                      onChange={(value) =>
+                        setServiceRows((current) =>
+                          current.map((item) => item.id === row.id ? { ...item, feeItems: value } : item),
+                        )
+                      }
+                    />
                   </td>
                   <td className="px-3 py-3">
                     <Input value={row.remark} placeholder="请输入备注" onChange={(event) => setServiceRows((current) => current.map((item) => item.id === row.id ? { ...item, remark: event.target.value } : item))} />
@@ -488,8 +739,8 @@ function LogisticsChannelForm({
                     <button
                       type="button"
                       className="border-0 bg-transparent p-0 text-primary hover:underline disabled:text-text-placeholder disabled:no-underline"
-                      disabled={serviceRows.length === 1}
-                      onClick={() => setServiceRows((current) => current.length === 1 ? current : current.filter((item) => item.id !== row.id))}
+                      disabled={index === 0}
+                      onClick={() => setServiceRows((current) => current.filter((item) => item.id !== row.id))}
                     >
                       移除
                     </button>
@@ -548,15 +799,15 @@ function LogisticsChannelDetail({
       </Card>
 
       <Card>
-        <SectionTitle>服务商配置</SectionTitle>
+        <SectionTitle>物流商配置</SectionTitle>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[980px] border-collapse text-left text-small">
             <thead className="bg-bg-page text-text-muted">
               <tr>
                 <th className={tableHeadCell}>序号</th>
-                <th className={tableHeadCell}>服务商</th>
+                <th className={tableHeadCell}>物流商</th>
                 <th className={tableHeadCell}>服务环节</th>
-                <th className={tableHeadCell}>计费分段</th>
+                <th className={tableHeadCell}>费用项</th>
                 <th className={tableHeadCell}>备注</th>
               </tr>
             </thead>
@@ -564,9 +815,11 @@ function LogisticsChannelDetail({
               {record.carrierPartners.map((partner, index) => (
                 <tr key={`${partner}-${index}`}>
                   <td className="px-3 py-3">{index + 1}</td>
-                  <td className="px-3 py-3">{partner}</td>
+                  <td className="px-3 py-3">{normalizeProviderName(partner)}</td>
                   <td className="px-3 py-3">{["国内揽收", "干线运输", "清关", "尾程派送"][index] ?? "尾程派送"}</td>
-                  <td className="px-3 py-3">{record.feeSegments[index] ?? "-"}</td>
+                  <td className="px-3 py-3">
+                    {record.feeSegments[index]?.split("、").map((item) => item.split("-")[0]).filter(Boolean).join("、") ?? "-"}
+                  </td>
                   <td className="px-3 py-3">-</td>
                 </tr>
               ))}

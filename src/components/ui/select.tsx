@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
@@ -17,6 +17,8 @@ type SelectProps = {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  clearable?: boolean;
+  clearValue?: string;
   menuDensity?: "default" | "compact";
   menuPlacement?: "auto" | "top" | "bottom";
   menuMinWidth?: number;
@@ -30,6 +32,8 @@ export function Select({
   placeholder = "请选择",
   className,
   disabled = false,
+  clearable = true,
+  clearValue,
   menuDensity = "default",
   menuPlacement = "auto",
   menuMinWidth,
@@ -51,10 +55,12 @@ export function Select({
   const [menuMaxHeight, setMenuMaxHeight] = useState(240);
 
   const currentValue = isControlled ? value : innerValue;
+  const resolvedClearValue = clearValue ?? (options.some((option) => option.value === "all") ? "all" : "");
   const selectedOption = useMemo(
     () => options.find((option) => option.value === currentValue),
     [currentValue, options],
   );
+  const canClear = clearable && !disabled && Boolean(currentValue) && currentValue !== resolvedClearValue;
 
   useEffect(() => {
     if (!isControlled) {
@@ -138,7 +144,7 @@ export function Select({
     };
   }, [menuMinWidth, menuPlacement, open, options.length]);
 
-  function handleSelect(nextValue: string) {
+  function updateValue(nextValue: string) {
     if (!isControlled) {
       setInnerValue(nextValue);
     }
@@ -146,8 +152,12 @@ export function Select({
     setOpen(false);
   }
 
+  function handleSelect(nextValue: string) {
+    updateValue(nextValue);
+  }
+
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="group relative">
       <button
         ref={triggerRef}
         type="button"
@@ -178,10 +188,25 @@ export function Select({
           aria-hidden="true"
           className={cn(
             "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted transition-transform",
+            canClear && "group-hover:opacity-0",
             open && "rotate-180",
           )}
         />
       </button>
+      {canClear ? (
+        <button
+          type="button"
+          aria-label="取消选中"
+          className="absolute right-3 top-1/2 hidden h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white text-text-muted hover:border-primary hover:text-primary group-hover:flex"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            updateValue(resolvedClearValue);
+          }}
+        >
+          <X aria-hidden="true" className="h-3 w-3" />
+        </button>
+      ) : null}
 
       {open && typeof document !== "undefined"
         ? createPortal(

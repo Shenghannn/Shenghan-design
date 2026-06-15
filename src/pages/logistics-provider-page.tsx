@@ -311,7 +311,7 @@ function SectionTitle({ children }: { children: string }) {
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[120px_1fr] gap-3 text-small">
-      <div className="text-text-secondary">{label}</div>
+      <div className="text-text-secondary">{label}：</div>
       <div className="text-text-primary">{value || "-"}</div>
     </div>
   );
