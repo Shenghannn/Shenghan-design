@@ -558,6 +558,7 @@ export default function App() {
   const [themeModalOpen, setThemeModalOpen] = useState(false);
   const [currentTenantId, setCurrentTenantId] = useState(tenantOptions[0].id);
   const [activeTab, setActiveTab] = useState<WorkspaceTabKey>("home");
+  const [stockupSubView, setStockupSubView] = useState<"list" | "feeDetail">("list");
   const [openTabs, setOpenTabs] = useState<WorkspaceTabKey[]>(["home"]);
   const [logisticsProviderResetKey, setLogisticsProviderResetKey] = useState(0);
   const [logisticsChannelResetKey, setLogisticsChannelResetKey] = useState(0);
@@ -2040,7 +2041,9 @@ export default function App() {
           : activeTab === "create-sta-task" || activeTab === "shipping-plan"
             ? "shipping-plan"
           : activeTab === "stockup-order"
-            ? "stockup-order"
+            ? stockupSubView === "feeDetail"
+              ? "stockup-fee-detail"
+              : "stockup-order"
           : activeTab === "logistics-change-order"
             ? "logistics-change-order"
           : activeTab.startsWith("first-leg-logistics-order")
@@ -2101,6 +2104,11 @@ export default function App() {
           openWorkspaceTab("shipping-plan");
         }
         if (key === "stockup-order") {
+          setStockupSubView("list");
+          openWorkspaceTab("stockup-order");
+        }
+        if (key === "stockup-fee-detail") {
+          setStockupSubView("feeDetail");
           openWorkspaceTab("stockup-order");
         }
         if (key === "logistics-change-order") {
@@ -2264,7 +2272,9 @@ export default function App() {
           onShowAlert={showFloatingAlert}
         />
       )}
-      {activeTab === "stockup-order" && <StockupOrderPage />}
+      {activeTab === "stockup-order" && (
+        <StockupOrderPage activeSubView={stockupSubView} onSubViewChange={setStockupSubView} />
+      )}
       {activeTab === "logistics-change-order" && <LogisticsChangeOrderPage />}
       {activeTab.startsWith("first-leg-logistics-order") && (
         <FirstLegLogisticsOrderPage

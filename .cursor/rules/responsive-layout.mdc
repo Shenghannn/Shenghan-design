@@ -1,0 +1,85 @@
+---
+description: 原型页面分辨率与缩放适配规范（Tailwind 断点、表单、表格、Tab、底栏）
+globs: src/pages/**/*.tsx,src/components/ui/**/*.tsx
+alwaysApply: false
+---
+
+# 页面分辨率与缩放适配
+
+面向 `Shenghan-design` 管理后台原型。默认 **mobile-first**，宽屏逐步增列，窄屏优先可读性与可点击区域，不依赖浏览器缩放才能操作。
+
+## 断点与布局密度
+
+| 断点 | 宽度 | 典型场景 |
+|------|------|----------|
+| 默认 | `<640px` | 单列；标签在上、控件在下；区块纵向堆叠 |
+| `sm` | `≥640px` | 表单标签与控件同行；信息项两列网格；工具栏可并排 |
+| `md` | `≥768px` | 费用/元信息 2 列；复杂表格仍允许横向滚动 |
+| `xl` | `≥1280px` | 基本信息 3 列；区块标题与操作按钮同一行 |
+| `2xl` | `≥1536px` | 基本信息 4 列（高密度宽屏） |
+
+**缩放说明**：用户放大到 125%–150% 时，视口有效宽度下降，布局应自然降级到更低断点行为（靠 responsive class 实现，不写固定 px 宽度撑满屏）。
+
+## 创建 / 编辑页
+
+```tsx
+// FormRow：小屏标签在上，sm 起右对齐固定宽
+<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+  <div className="w-full shrink-0 text-left text-small text-text-secondary sm:w-[112px] sm:text-right">...</div>
+  <div className="min-w-0 flex-1">{children}</div>
+</div>
+
+// 基本信息区
+<div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+
+// 固定底栏：允许换行 + 小屏减小左右内边距
+<div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap justify-center gap-3 border-t border-border bg-white px-4 py-3 shadow-lg sm:px-6">
+// 页面根节点预留底栏高度
+<div className="space-y-4 pb-16">
+```
+
+## 详情页
+
+```tsx
+// InfoItem
+<div className="grid grid-cols-1 gap-1 text-small sm:grid-cols-[112px_1fr] sm:gap-3">
+  <div className="text-text-secondary">{label}：</div>
+  <div className="min-w-0 break-words text-text-primary">{value || "-"}</div>
+</div>
+
+// 页头标题与按钮
+<div className="flex flex-col gap-3 border-b border-border pb-3 sm:flex-row sm:items-center sm:justify-between">
+```
+
+## 表格与 Tab
+
+- **宽表格**：外层 `overflow-x-auto`（或 `-mx-px overflow-x-auto` 贴边），内层 `min-w-[…]` + 可选 `table-fixed` + `colgroup` 控制列宽；单元格 `align-top`，长文本 `break-words`。
+- **运输方案 Tab**：Tab 容器加 `overflow-x-auto`，避免方案名过多时挤压或换行错乱。
+- **区块头**（方案名 + 操作）：`flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`。
+
+## 浮层与级联选择
+
+- 触发器：`min-w-0 flex-1` + `pr-10`，箭头与 `Select` 一致用 `ChevronDown`（`absolute right-3`，展开 `rotate-180`）。
+- 下拉面板宽度：`w-full max-w-[min(600px,calc(100vw-32px))]`，极窄屏可 `grid-cols-1`，`sm:` 起多列，避免超出视口。
+
+## 费用明细与复合控件
+
+- **费用区块头（lg+）**：`费用明细` 标题与「优惠方式 / 折扣率 / 汇率 / 总价格」同一行；窄屏可换行，汇总区 `lg:justify-end`。
+- **行内字段**：标签 `w-[72px] text-right text-mini`，与控件间距 `gap-1.5`；步进器网格 `lg:grid-cols-4`，每格字段+步进器左右排列。
+- **汇总步进器**：使用 `AmountInput compact`（`h-7`、 `text-mini`）；总价格只读块同高。
+- **优惠单选**：`text-mini` + `radio h-3 w-3`。
+- **AmountInput（费用项）**：常规高度；容器 `w-full min-w-0 max-w-full`。
+- **卡片容器**：物流商报价块加 `min-w-0 overflow-hidden`。
+
+## 禁止项
+
+- 不要用单一 `grid-cols-4` 或无断点的横向 `flex` 塞满窄屏。
+- 不要为适配而缩小表格字号或去掉 `min-w` 导致列重叠。
+- 不要写 `zoom` / `transform: scale` 做页面级缩放。
+
+## 自检清单（改完必过）
+
+1. 1280px、1024px、768px、375px 宽度下表单标签与控件不重叠。
+2. 表格在窄屏可横向滚动，操作列仍可见。
+3. 固定底栏不遮挡最后一块 Card 内容。
+4. Tab、多选、地址级联浮层不超出视口左右边界。

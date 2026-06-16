@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Filter } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { ListPageMainCard, ListPageToolbar } from "../components/ui/list-page-layout";
 import { DateRangePicker, type DateRangeValue } from "../components/ui/date-range-picker";
+import { ExclusiveFilterGroup, useExclusiveFilterPanel } from "../components/ui/exclusive-filter-group";
 import { Input } from "../components/ui/input";
+import { MultiSelectFilter } from "../components/ui/multi-select-filter";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
 import { Tabs } from "../components/ui/tabs";
@@ -281,53 +283,6 @@ function statusTone(status: PaymentRequestStatus) {
   return "closed";
 }
 
-function MultiSelectFilter({
-  placeholder,
-  options,
-  value,
-  onChange,
-}: {
-  placeholder: string;
-  options: string[];
-  value: string[];
-  onChange: (value: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const label = value.length === 0 ? placeholder : `${placeholder}(${value.length})`;
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        className="field-control flex w-[190px] items-center justify-between gap-2 text-left"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className={value.length ? "truncate text-text-primary" : "truncate text-text-placeholder"}>{label}</span>
-        <span className="text-text-muted">⌄</span>
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-[260px] w-[240px] overflow-auto rounded-sm border border-border bg-white p-2 shadow-md">
-          {options.map((option) => {
-            const checked = value.includes(option);
-            return (
-              <label key={option} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-small hover:bg-bg-hover">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() =>
-                    onChange(checked ? value.filter((item) => item !== option) : [...value, option])
-                  }
-                />
-                <span className="truncate">{option}</span>
-              </label>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function AmountCell({ value }: { value: number }) {
   return <span className="font-tabular-nums">¥{formatAmount(value)}</span>;
 }
@@ -374,7 +329,8 @@ function PaymentRequestListPage({
   const [timeRange, setTimeRange] = useState<DateRangeValue>(emptyRange());
   const [searchField, setSearchField] = useState<"reqFundsOrderSn" | "remark" | "relatedOrderSn" | "accountHolderName" | "payer">("reqFundsOrderSn");
   const [searchKeyword, setSearchKeyword] = useState("");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const advancedPanelId = useId();
+  const { open: advancedOpen, toggle: toggleAdvanced } = useExclusiveFilterPanel(advancedPanelId);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -461,6 +417,7 @@ function PaymentRequestListPage({
       </div>
 
       <div className="border-t border-border px-4 py-3">
+        <ExclusiveFilterGroup>
         <div className="flex flex-wrap items-center gap-3">
           <MultiSelectFilter placeholder="供应商" options={supplierOptions} value={suppliers} onChange={(value) => { setSuppliers(value); setPage(1); }} />
           <MultiSelectFilter placeholder="审批人" options={approverOptions} value={approvers} onChange={(value) => { setApprovers(value); setPage(1); }} />
@@ -499,7 +456,7 @@ function PaymentRequestListPage({
             }}
           />
           <div className="relative">
-            <Button variant="secondary" size="sm" onClick={() => setAdvancedOpen((current) => !current)}>
+            <Button variant="secondary" size="sm" onClick={toggleAdvanced}>
               <Filter aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
               高级筛选
             </Button>
@@ -520,6 +477,7 @@ function PaymentRequestListPage({
             <Button variant="secondary" size="sm">导出</Button>
           </div>
         </div>
+        </ExclusiveFilterGroup>
       </div>
 
       <ListPageToolbar>

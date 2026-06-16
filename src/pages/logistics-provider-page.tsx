@@ -3,7 +3,9 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { DateRangePicker, type DateRangeValue } from "../components/ui/date-range-picker";
+import { ExclusiveFilterGroup } from "../components/ui/exclusive-filter-group";
 import { Input } from "../components/ui/input";
+import { MultiSelectFilter } from "../components/ui/multi-select-filter";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
@@ -255,53 +257,6 @@ function statusTone(status: ApprovalStatus | CooperationStatus) {
     return "pending";
   }
   return "closed";
-}
-
-function MultiSelectFilter({
-  placeholder,
-  options,
-  value,
-  onChange,
-}: {
-  placeholder: string;
-  options: Array<{ label: string; value: string }>;
-  value: string[];
-  onChange: (nextValue: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const label = value.length === 0 ? placeholder : `${placeholder}(${value.length})`;
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        className="field-control flex w-[190px] items-center justify-between gap-2 text-left"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className={value.length ? "truncate text-text-primary" : "truncate text-text-placeholder"}>{label}</span>
-        <span className="text-text-muted">⌄</span>
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-[260px] w-[240px] overflow-auto rounded-sm border border-border bg-white p-2 shadow-md">
-          {options.map((option) => {
-            const checked = value.includes(option.value);
-            return (
-              <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-small hover:bg-bg-hover">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() =>
-                    onChange(checked ? value.filter((item) => item !== option.value) : [...value, option.value])
-                  }
-                />
-                <span className="truncate">{option.label}</span>
-              </label>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function SectionTitle({ children }: { children: string }) {
@@ -861,6 +816,7 @@ export function LogisticsProviderPage({
   return (
     <div className="space-y-4">
       <Card>
+        <ExclusiveFilterGroup>
         <div className="flex flex-wrap items-center gap-3">
           <MultiSelectFilter
             placeholder="审批状态"
@@ -911,6 +867,7 @@ export function LogisticsProviderPage({
           <Button variant="primary" size="sm">查询</Button>
           <Button variant="secondary" size="sm" onClick={resetFilters}>重置</Button>
         </div>
+        </ExclusiveFilterGroup>
       </Card>
 
       <Card>

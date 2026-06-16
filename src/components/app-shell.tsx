@@ -110,9 +110,12 @@ const navigationTree: NavSection[] = [
       {
         id: "first-leg-tasks",
         label: "物流订单",
+        pageId: "shipping-plan",
+        icon: "shippingPlan",
         items: [
           { id: "shipping-plan", label: "发货计划", icon: "shippingPlan" },
           { id: "stockup-order", label: "备货单", icon: "orders" },
+          { id: "stockup-fee-detail", label: "费用明细", icon: "orders" },
           { id: "logistics-change-order", label: "物流变更单", icon: "orders" },
           { id: "first-leg-logistics-order", label: "头程物流订单", icon: "orders" },
           { id: "sta-task", label: "STA任务", icon: "sta" },

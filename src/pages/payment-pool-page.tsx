@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -11,7 +11,9 @@ import {
 } from "../data/payment-pool";
 import { ListPageMainCard, ListPageToolbar } from "../components/ui/list-page-layout";
 import { DateRangePicker, type DateRangeValue } from "../components/ui/date-range-picker";
+import { ExclusiveFilterGroup, useExclusiveFilterPanel } from "../components/ui/exclusive-filter-group";
 import { Modal } from "../components/ui/modal";
+import { MultiSelectFilter } from "../components/ui/multi-select-filter";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
 import { Tabs } from "../components/ui/tabs";
@@ -81,53 +83,6 @@ function statusTone(status: PaymentPoolRecord["status"]) {
   return status === "已付清" ? "success" : "processing";
 }
 
-function MultiSelectFilter({
-  placeholder,
-  options,
-  value,
-  onChange,
-}: {
-  placeholder: string;
-  options: string[];
-  value: string[];
-  onChange: (value: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const label = value.length === 0 ? placeholder : `${placeholder}(${value.length})`;
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        className="field-control flex w-[190px] items-center justify-between gap-2 text-left"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className={value.length ? "truncate text-text-primary" : "truncate text-text-placeholder"}>{label}</span>
-        <span className="text-text-muted">⌄</span>
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-[260px] w-[240px] overflow-auto rounded-sm border border-border bg-white p-2 shadow-md">
-          {options.map((option) => {
-            const checked = value.includes(option);
-            return (
-              <label key={option} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-small hover:bg-bg-hover">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() =>
-                    onChange(checked ? value.filter((item) => item !== option) : [...value, option])
-                  }
-                />
-                <span className="truncate">{option}</span>
-              </label>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function BatchExactSearch({
   title,
   placeholder,
@@ -139,12 +94,29 @@ function BatchExactSearch({
   values: string[];
   onChange: (values: string[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const { open, setOpen } = useExclusiveFilterPanel(panelId);
   const [draft, setDraft] = useState(values.join("\n"));
   const parsedValues = parseBatchValues(draft);
   const invalid = parsedValues.length > 0 && !isAlphaNumericList(parsedValues);
   const overLimit = parsedValues.length > 200;
   const canConfirm = parsedValues.length > 0 && !invalid && !overLimit;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        closeAndResetDraft();
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
 
   function closeAndResetDraft() {
     setDraft(values.join("\n"));
@@ -152,7 +124,7 @@ function BatchExactSearch({
   }
 
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       <button
         type="button"
         className="field-control flex w-[190px] items-center justify-between gap-2 text-left"
@@ -479,6 +451,7 @@ function PaymentPoolListPage({
       </div>
 
       <div className="border-t border-border px-4 py-3">
+        <ExclusiveFilterGroup>
         <div className="flex flex-wrap items-center gap-3">
           <MultiSelectFilter placeholder="物流商" options={providerOptions} value={providers} onChange={(value) => { setProviders(value); setPage(1); }} />
           <MultiSelectFilter placeholder="发货仓库" options={warehouseOptions} value={sendWarehouses} onChange={(value) => { setSendWarehouses(value); setPage(1); }} />
@@ -503,6 +476,7 @@ function PaymentPoolListPage({
             <Button variant="secondary" size="sm">导出</Button>
           </div>
         </div>
+        </ExclusiveFilterGroup>
       </div>
 
       <ListPageToolbar>

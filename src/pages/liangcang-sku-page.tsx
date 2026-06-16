@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
+import { ExclusiveFilterGroup } from "../components/ui/exclusive-filter-group";
 import { Input } from "../components/ui/input";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
@@ -102,6 +103,7 @@ export function LiangcangSkuPage() {
   return (
     <div className="space-y-4">
       <Card>
+        <ExclusiveFilterGroup>
         <div className="flex flex-wrap items-end gap-3">
           <FilterItem label="良仓账号" widthClass="w-[148px]">
             <Select
@@ -156,6 +158,7 @@ export function LiangcangSkuPage() {
             </Button>
           </div>
         </div>
+        </ExclusiveFilterGroup>
       </Card>
 
       <Card className="overflow-hidden">

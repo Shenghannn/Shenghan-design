@@ -1,8 +1,10 @@
 import type { CSSProperties } from "react";
-import { Check, ChevronDown, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Check, X } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
+import { useExclusiveFilterPanel } from "./exclusive-filter-group";
+import { SelectChevron } from "./select-chevron";
 
 export type SelectOption = {
   label: string;
@@ -22,6 +24,7 @@ type SelectProps = {
   menuDensity?: "default" | "compact";
   menuPlacement?: "auto" | "top" | "bottom";
   menuMinWidth?: number;
+  filterPanelId?: string;
   onValueChange?: (value: string) => void;
 };
 
@@ -37,13 +40,16 @@ export function Select({
   menuDensity = "default",
   menuPlacement = "auto",
   menuMinWidth,
+  filterPanelId,
   onValueChange,
 }: SelectProps) {
+  const autoPanelId = useId();
+  const panelId = filterPanelId ?? autoPanelId;
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const isControlled = value !== undefined;
-  const [open, setOpen] = useState(false);
+  const { open, setOpen, toggle } = useExclusiveFilterPanel(panelId);
   const [innerValue, setInnerValue] = useState(defaultValue ?? "");
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({
     position: "fixed",
@@ -171,7 +177,7 @@ export function Select({
         )}
         onClick={() => {
           if (!disabled) {
-            setOpen((current) => !current);
+            toggle();
           }
         }}
       >
@@ -184,14 +190,7 @@ export function Select({
         >
           {selectedOption?.label ?? placeholder}
         </span>
-        <ChevronDown
-          aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted transition-transform",
-            canClear && "group-hover:opacity-0",
-            open && "rotate-180",
-          )}
-        />
+        <SelectChevron open={open} hideOnHover={canClear} />
       </button>
       {canClear ? (
         <button
@@ -241,7 +240,14 @@ export function Select({
                       <span className="inline-flex w-4 items-center justify-center">
                         {active ? <Check aria-hidden="true" className="h-4 w-4" /> : null}
                       </span>
-                      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-left leading-none">{option.label}</span>
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 whitespace-nowrap text-left leading-none",
+                          menuMinWidth ? "" : "truncate",
+                        )}
+                      >
+                        {option.label}
+                      </span>
                     </button>
                   );
                 })}

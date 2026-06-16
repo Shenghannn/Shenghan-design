@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Search, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { DateRangePicker, type DateRangeValue } from "../components/ui/date-range-picker";
+import { ExclusiveFilterGroup, useExclusiveFilterPanel } from "../components/ui/exclusive-filter-group";
 import { Input } from "../components/ui/input";
+import { MultiSelectFilter } from "../components/ui/multi-select-filter";
 import { Modal } from "../components/ui/modal";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
@@ -568,6 +570,7 @@ export function FirstLegLogisticsOrderPage({
   return (
     <div className="space-y-4">
       <Card>
+        <ExclusiveFilterGroup>
         <div className="flex flex-wrap items-end gap-3">
           <FilterItem label="物流计划单" widthClass="w-[200px]">
             <BatchExactSearch
@@ -606,10 +609,10 @@ export function FirstLegLogisticsOrderPage({
             />
           </FilterItem>
           <FilterItem label="运输方式" widthClass="w-[180px]">
-            <MultiSelectFilter placeholder="全部运输方式" options={transportModeOptions} value={transportModes} onChange={setTransportModes} />
+            <MultiSelectFilter display="tags" clearable placeholder="全部运输方式" options={transportModeOptions} value={transportModes} onChange={setTransportModes} />
           </FilterItem>
           <FilterItem label="物流渠道" widthClass="w-[180px]">
-            <MultiSelectFilter placeholder="全部物流渠道" options={logisticsChannelOptions} value={channels} onChange={setChannels} />
+            <MultiSelectFilter display="tags" clearable placeholder="全部物流渠道" options={logisticsChannelOptions} value={channels} onChange={setChannels} />
           </FilterItem>
           <FilterItem label="创建时间" widthClass="w-[280px]">
             <DateRangePicker value={createdRange} onChange={setCreatedRange} />
@@ -618,16 +621,17 @@ export function FirstLegLogisticsOrderPage({
             <DateRangePicker value={updatedRange} onChange={setUpdatedRange} />
           </FilterItem>
           <FilterItem label="创建人" widthClass="w-[180px]">
-            <MultiSelectFilter placeholder="全部创建人" options={operatorOptions} value={creators} onChange={setCreators} />
+            <MultiSelectFilter display="tags" clearable placeholder="全部创建人" options={operatorOptions} value={creators} onChange={setCreators} />
           </FilterItem>
           <FilterItem label="更新人" widthClass="w-[180px]">
-            <MultiSelectFilter placeholder="全部更新人" options={operatorOptions} value={updaters} onChange={setUpdaters} />
+            <MultiSelectFilter display="tags" clearable placeholder="全部更新人" options={operatorOptions} value={updaters} onChange={setUpdaters} />
           </FilterItem>
           <div className="flex shrink-0 items-center gap-2 pb-0.5">
             <Button variant="primary" size="sm">查询</Button>
             <Button variant="secondary" size="sm" onClick={resetFilters}>重置</Button>
           </div>
         </div>
+        </ExclusiveFilterGroup>
       </Card>
 
       <Card>
@@ -1179,12 +1183,29 @@ function BatchExactSearch({
   values: string[];
   onChange: (values: string[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const { open, setOpen } = useExclusiveFilterPanel(panelId);
   const [draft, setDraft] = useState(values.join("\n"));
   const parsedValues = parseBatchValues(draft);
   const invalid = parsedValues.length > 0 && !isAlphaNumericList(parsedValues);
   const overLimit = parsedValues.length > 200;
   const canConfirm = parsedValues.length > 0 && !invalid && !overLimit;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        closeAndResetDraft();
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
 
   function closeAndResetDraft() {
     setDraft(values.join("\n"));
@@ -1206,7 +1227,7 @@ function BatchExactSearch({
   }
 
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       <button
         type="button"
         className="field-control flex w-full items-center justify-between gap-2 text-left"
@@ -1247,85 +1268,6 @@ function BatchExactSearch({
             {values.length > 0 ? <Button className="min-w-[64px]" variant="secondary" size="sm" onClick={clear}>清空</Button> : null}
             <Button className="min-w-[64px]" variant="primary" size="sm" disabled={!canConfirm} onClick={confirm}>确认</Button>
           </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function MultiSelectFilter({
-  placeholder,
-  options,
-  value,
-  onChange,
-}: {
-  placeholder: string;
-  options: string[];
-  value: string[];
-  onChange: (value: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const visibleTags = value.slice(0, 1);
-  const hiddenCount = Math.max(value.length - visibleTags.length, 0);
-
-  function toggleOption(option: string) {
-    onChange(value.includes(option) ? value.filter((item) => item !== option) : [...value, option]);
-  }
-
-  return (
-    <div className="group relative">
-      <button
-        type="button"
-        className="field-control flex w-full items-center justify-between gap-2 pr-10 text-left"
-        onClick={() => setOpen((current) => !current)}
-      >
-        {value.length ? (
-          <span className="flex min-w-0 items-center gap-1">
-            {visibleTags.map((item) => (
-              <span key={item} className="inline-flex max-w-[120px] items-center rounded-sm bg-bg-page px-2 py-0.5 text-small text-text-primary">
-                <span className="truncate">{item}</span>
-              </span>
-            ))}
-            {hiddenCount > 0 ? <span className="inline-flex shrink-0 items-center rounded-sm bg-bg-page px-2 py-0.5 text-small text-text-primary">+ {hiddenCount}</span> : null}
-          </span>
-        ) : (
-          <span className="truncate text-text-placeholder">{placeholder}</span>
-        )}
-        <span className={`absolute right-3 text-text-muted ${value.length ? "group-hover:opacity-0" : ""}`}>⌄</span>
-      </button>
-      {value.length ? (
-        <button
-          type="button"
-          aria-label={`清空${placeholder}`}
-          className="absolute right-3 top-1/2 hidden h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white text-text-muted hover:border-primary hover:text-primary group-hover:flex"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onChange([]);
-            setOpen(false);
-          }}
-        >
-          ×
-        </button>
-      ) : null}
-      {open ? (
-        <div className="absolute left-0 top-[calc(100%+4px)] z-50 max-h-[260px] w-full min-w-[220px] overflow-auto rounded-sm border border-border bg-white p-1 shadow-md">
-          {options.map((option) => {
-            const checked = value.includes(option);
-            return (
-              <button
-                key={option}
-                type="button"
-                className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-sm px-3 text-left text-small transition hover:bg-bg-hover ${
-                  checked ? "font-medium text-primary" : "text-text-primary"
-                }`}
-                onClick={() => toggleOption(option)}
-              >
-                <span className="truncate">{option}</span>
-                <span className="w-4 shrink-0 text-primary">{checked ? "✓" : ""}</span>
-              </button>
-            );
-          })}
         </div>
       ) : null}
     </div>

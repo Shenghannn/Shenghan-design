@@ -4,10 +4,14 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { DateRangePicker, type DateRangeValue } from "../components/ui/date-range-picker";
+import { ExclusiveFilterGroup } from "../components/ui/exclusive-filter-group";
 import { Input } from "../components/ui/input";
+import { MultiSelectFilter } from "../components/ui/multi-select-filter";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
+import { Tabs } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
+import { StockupFeeDetailSection } from "./stockup-fee-detail-page";
 
 type StockupStatus = "待处理" | "已处理" | "待配货" | "已发货" | "已完成" | "已作废";
 type RelationStatus = "已关联" | "未关联" | "无需关联";
@@ -47,6 +51,14 @@ type StockupOrderRecord = {
 };
 
 const tableHeadCell = "whitespace-nowrap px-3 py-3 font-medium";
+
+type PlanWorkspaceTab = "stockupDetail" | "logisticsInfo";
+type StockupPageSubView = "list" | "feeDetail";
+
+const stockupPageMenuTabs: Array<{ label: string; value: StockupPageSubView }> = [
+  { label: "备货单", value: "list" },
+  { label: "费用明细", value: "feeDetail" },
+];
 const relationOptions: RelationStatus[] = ["已关联", "未关联", "无需关联"];
 const statusTabs: Array<{ label: string; value: "全部" | StockupStatus }> = [
   { label: "全部", value: "全部" },
@@ -449,53 +461,6 @@ function validateSameLogistics(records: StockupOrderRecord[]) {
   return "";
 }
 
-function MultiSelectFilter({
-  placeholder,
-  options,
-  value,
-  onChange,
-}: {
-  placeholder: string;
-  options: Array<{ label: string; value: string }>;
-  value: string[];
-  onChange: (nextValue: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const label = value.length === 0 ? placeholder : `${placeholder}(${value.length})`;
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        className="field-control flex w-[180px] items-center justify-between gap-2 text-left"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className={value.length ? "truncate text-text-primary" : "truncate text-text-placeholder"}>{label}</span>
-        <ChevronDown aria-hidden="true" className={`h-4 w-4 text-text-muted ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-[260px] w-[220px] overflow-auto rounded-sm border border-border bg-white p-2 shadow-md">
-          {options.map((option) => {
-            const checked = value.includes(option.value);
-            return (
-              <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-small hover:bg-bg-hover">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() =>
-                    onChange(checked ? value.filter((item) => item !== option.value) : [...value, option.value])
-                  }
-                />
-                <span className="truncate">{option.label}</span>
-              </label>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function statusTone(status: StockupStatus) {
   if (status === "已完成") {
     return "success";
@@ -633,7 +598,7 @@ function CreateLogisticsPlanPage({
   const [receiveMethod, setReceiveMethod] = useState("");
   const [remark, setRemark] = useState("");
   const [customRemark, setCustomRemark] = useState("");
-  const [activePlanTab, setActivePlanTab] = useState<"stockupDetail" | "logisticsInfo">("stockupDetail");
+  const [activePlanTab, setActivePlanTab] = useState<PlanWorkspaceTab>("stockupDetail");
   const [overLimitPromptOpen, setOverLimitPromptOpen] = useState(false);
   const selectedProvider = logisticsProviderOptions.find((item) => item.value === provider);
   const channelOptions = selectedProvider?.channels ?? [];
@@ -648,6 +613,26 @@ function CreateLogisticsPlanPage({
     { label: "请选择", value: "" },
     { label: "是", value: "是" },
     { label: "否", value: "否" },
+  ];
+
+  useEffect(() => {
+    const baseRecord = records[0];
+    if (!baseRecord) {
+      return;
+    }
+    const matchedProvider = logisticsProviderOptions.find((item) =>
+      item.channels.some((itemChannel) => itemChannel.value === baseRecord.logisticsChannel),
+    );
+    if (matchedProvider) {
+      setProvider(matchedProvider.value);
+    }
+    setChannel(baseRecord.logisticsChannel);
+    setTransportMode(baseRecord.transportMode);
+  }, [records]);
+
+  const planTabs: Array<{ label: string; value: PlanWorkspaceTab }> = [
+    { label: "备货明细", value: "stockupDetail" },
+    { label: "物流信息", value: "logisticsInfo" },
   ];
 
   function handleProviderChange(value: string) {
@@ -726,28 +711,7 @@ function CreateLogisticsPlanPage({
 
       <Card>
         <div className="border-b border-border">
-          <button
-            type="button"
-            className={`-mb-px border-b-2 pb-3 text-body ${
-              activePlanTab === "stockupDetail"
-                ? "border-primary font-medium text-primary"
-                : "border-transparent text-text-secondary hover:text-text-primary"
-            }`}
-            onClick={() => setActivePlanTab("stockupDetail")}
-          >
-            备货明细
-          </button>
-          <button
-            type="button"
-            className={`ml-6 -mb-px border-b-2 pb-3 text-body ${
-              activePlanTab === "logisticsInfo"
-                ? "border-primary font-medium text-primary"
-                : "border-transparent text-text-secondary hover:text-text-primary"
-            }`}
-            onClick={() => setActivePlanTab("logisticsInfo")}
-          >
-            物流信息
-          </button>
+          <Tabs items={planTabs} value={activePlanTab} onChange={setActivePlanTab} />
         </div>
         {activePlanTab === "stockupDetail" ? (
           <div className="mt-4">
@@ -805,7 +769,7 @@ function CreateLogisticsPlanPage({
               </table>
             </div>
           </div>
-        ) : (
+        ) : activePlanTab === "logisticsInfo" ? (
           <div className="mt-4">
             <div className="border-l-4 border-primary pl-3 font-medium text-text-primary">基础信息</div>
             <div className="mt-4 grid gap-x-8 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
@@ -872,7 +836,7 @@ function CreateLogisticsPlanPage({
               </FormFieldRow>
             </div>
           </div>
-        )}
+        ) : null}
       </Card>
 
       <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center gap-3 border-t border-border bg-white px-6 py-3 shadow-lg">
@@ -906,7 +870,13 @@ function CreateLogisticsPlanPage({
   );
 }
 
-export function StockupOrderPage() {
+export function StockupOrderPage({
+  activeSubView = "list",
+  onSubViewChange,
+}: {
+  activeSubView?: StockupPageSubView;
+  onSubViewChange?: (view: StockupPageSubView) => void;
+}) {
   const [creatingRecords, setCreatingRecords] = useState<StockupOrderRecord[] | null>(null);
   const [validationMessage, setValidationMessage] = useState("");
   const [activeStatus, setActiveStatus] = useState<"全部" | StockupStatus>("全部");
@@ -1098,7 +1068,15 @@ export function StockupOrderPage() {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <div className="border-b border-border bg-white px-1">
+        <Tabs items={stockupPageMenuTabs} value={activeSubView} onChange={(value) => onSubViewChange?.(value)} />
+      </div>
+
+      {activeSubView === "feeDetail" ? (
+        <StockupFeeDetailSection />
+      ) : (
+        <>
+        <Card>
         <div className="flex flex-wrap items-center gap-6 border-b border-border">
           {statusCounts.map((tab) => {
             const active = tab.value === activeStatus;
@@ -1116,10 +1094,11 @@ export function StockupOrderPage() {
             );
           })}
         </div>
+        <ExclusiveFilterGroup>
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <MultiSelectFilter placeholder="平台" options={platformOptions} value={platforms} onChange={setPlatforms} />
-          <MultiSelectFilter placeholder="店铺" options={storeOptions} value={stores} onChange={setStores} />
-          <MultiSelectFilter placeholder="发货仓库" options={shipWarehouseOptions} value={shipWarehouses} onChange={setShipWarehouses} />
+          <MultiSelectFilter className="w-[180px]" placeholder="平台" options={platformOptions} value={platforms} onChange={setPlatforms} />
+          <MultiSelectFilter className="w-[180px]" placeholder="店铺" options={storeOptions} value={stores} onChange={setStores} />
+          <MultiSelectFilter className="w-[180px]" placeholder="发货仓库" options={shipWarehouseOptions} value={shipWarehouses} onChange={setShipWarehouses} />
           <Select
             className="w-[160px]"
             placeholder="发货仓库类型"
@@ -1142,13 +1121,13 @@ export function StockupOrderPage() {
               { label: "平台仓", value: "平台仓" },
             ]}
           />
-          <MultiSelectFilter placeholder="收货仓库" options={receiveWarehouseOptions} value={receiveWarehouses} onChange={setReceiveWarehouses} />
-          <MultiSelectFilter placeholder="物流渠道" options={logisticsChannelOptions} value={logisticsChannels} onChange={setLogisticsChannels} />
-          <MultiSelectFilter placeholder="运输方式" options={transportModeOptions} value={transportModes} onChange={setTransportModes} />
-          <MultiSelectFilter placeholder="关联货件状态" options={relationStatusOptions} value={shipmentStatuses} onChange={setShipmentStatuses} />
-          <MultiSelectFilter placeholder="关联发运单状态" options={relationStatusOptions} value={shippingOrderStatuses} onChange={setShippingOrderStatuses} />
-          <MultiSelectFilter placeholder="关联第三方入库单状态" options={relationStatusOptions} value={thirdInboundStatuses} onChange={setThirdInboundStatuses} />
-          <MultiSelectFilter placeholder="关联物流计划单状态" options={relationStatusOptions} value={logisticsPlanStatuses} onChange={setLogisticsPlanStatuses} />
+          <MultiSelectFilter className="w-[180px]" placeholder="收货仓库" options={receiveWarehouseOptions} value={receiveWarehouses} onChange={setReceiveWarehouses} />
+          <MultiSelectFilter className="w-[180px]" placeholder="物流渠道" options={logisticsChannelOptions} value={logisticsChannels} onChange={setLogisticsChannels} />
+          <MultiSelectFilter className="w-[180px]" placeholder="运输方式" options={transportModeOptions} value={transportModes} onChange={setTransportModes} />
+          <MultiSelectFilter className="w-[180px]" placeholder="关联货件状态" options={relationStatusOptions} value={shipmentStatuses} onChange={setShipmentStatuses} />
+          <MultiSelectFilter className="w-[180px]" placeholder="关联发运单状态" options={relationStatusOptions} value={shippingOrderStatuses} onChange={setShippingOrderStatuses} />
+          <MultiSelectFilter className="w-[180px]" placeholder="关联第三方入库单状态" options={relationStatusOptions} value={thirdInboundStatuses} onChange={setThirdInboundStatuses} />
+          <MultiSelectFilter className="w-[180px]" placeholder="关联物流计划单状态" options={relationStatusOptions} value={logisticsPlanStatuses} onChange={setLogisticsPlanStatuses} />
           <div className="w-[280px]">
             <DateRangePicker value={estimatedShipRange} onChange={setEstimatedShipRange} />
           </div>
@@ -1171,6 +1150,7 @@ export function StockupOrderPage() {
           <Button variant="primary" size="sm">查询</Button>
           <Button variant="secondary" size="sm" onClick={resetFilters}>重置</Button>
         </div>
+        </ExclusiveFilterGroup>
       </Card>
 
       <Card>
@@ -1305,6 +1285,8 @@ export function StockupOrderPage() {
           }}
         />
       </Card>
+        </>
+      )}
     </div>
   );
 }

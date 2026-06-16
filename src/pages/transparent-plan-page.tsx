@@ -1,13 +1,15 @@
 import type { CSSProperties, ReactNode } from "react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Search, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { DateRangePicker, type DateRangeValue } from "../components/ui/date-range-picker";
+import { ExclusiveFilterGroup, useExclusiveFilterPanel } from "../components/ui/exclusive-filter-group";
 import { Input } from "../components/ui/input";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
+import { SelectChevron } from "../components/ui/select-chevron";
 
 type TransparencyStatus = "未使用" | "已使用";
 
@@ -245,6 +247,7 @@ export function TransparentPlanPage() {
   return (
     <div className="space-y-4">
       <Card>
+        <ExclusiveFilterGroup>
         <div className="flex flex-wrap items-end gap-3">
           <FilterItem label="使用状态" widthClass="w-[148px]">
             <Select
@@ -304,6 +307,7 @@ export function TransparentPlanPage() {
             </Button>
           </div>
         </div>
+        </ExclusiveFilterGroup>
       </Card>
 
       <Card className="overflow-hidden">
@@ -399,7 +403,8 @@ function StoreMultiSelect({
   placeholder: string;
   onChange: (value: string[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const { open, toggle, setOpen } = useExclusiveFilterPanel(panelId);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -489,7 +494,7 @@ function StoreMultiSelect({
         ref={triggerRef}
         type="button"
         className="field-control flex w-full items-center justify-between gap-2 pr-10 text-left"
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggle}
       >
         {value.length ? (
           <span className="flex min-w-0 items-center gap-1">
@@ -507,7 +512,7 @@ function StoreMultiSelect({
         ) : (
           <span className="truncate text-text-placeholder">{placeholder}</span>
         )}
-        <span className={`absolute right-3 text-text-muted ${canClear ? "group-hover:opacity-0" : ""}`}>{open ? "⌃" : "⌄"}</span>
+        <SelectChevron open={open} hideOnHover={canClear} />
       </button>
       {canClear ? (
         <button

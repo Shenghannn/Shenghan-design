@@ -1,12 +1,26 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { DateRangePicker, type DateRangeValue } from "../components/ui/date-range-picker";
+import { ExclusiveFilterGroup, useExclusiveFilterPanel } from "../components/ui/exclusive-filter-group";
 import { Input } from "../components/ui/input";
+import { MultiSelectFilter } from "../components/ui/multi-select-filter";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
+import { Tabs } from "../components/ui/tabs";
 import { cn } from "../lib/cn";
+import {
+  buildLegacyTransportSchemes,
+  cloneTransportSchemes,
+  feeCurrencyOptions,
+  feeCurrencySelectClassName,
+  feeCurrencySelectMenuMinWidth,
+  getChannelProviderCurrencies,
+  getTransportSchemesByChannel,
+  type ChannelTransportScheme,
+} from "../data/logistics-transport-schemes";
 
 type ShippingMode = "整柜" | "散货";
 
@@ -34,27 +48,7 @@ type QuoteRateRecord = {
 const tableHeadCell = "whitespace-nowrap px-3 py-3 font-medium";
 const logisticsProviderOptions = ["义乌市双捷国际货运代理有限公司", "浙江融盛国际物流有限公司", "深圳市以达物流有限公司", "宁波赛蓝供应链服务有限公司"];
 const logisticsChannelOptions = ["美南标快", "美西海派", "欧洲快线", "加拿大卡派", "美东快递"];
-const currencyOptions = ["USD", "CNY", "EUR", "CAD", "GBP"];
-const channelQuoteProviderSchemes: Record<string, Array<{ provider: string; serviceLinks: string[]; feeItems: string[] }>> = {
-  "美南标快": [
-    { provider: "义乌市双捷国际货运代理有限公司", serviceLinks: ["国内揽收", "干线运输"], feeItems: ["提货费", "报关费", "海运费", "订舱费", "港杂费"] },
-    { provider: "浙江融盛国际物流有限公司", serviceLinks: ["清关", "尾程派送"], feeItems: ["清关费", "税金", "派送费", "附加费"] },
-  ],
-  "美西海派": [
-    { provider: "义乌市双捷国际货运代理有限公司", serviceLinks: ["国内揽收", "干线运输"], feeItems: ["提货费", "海运费", "港杂费"] },
-    { provider: "深圳市以达物流有限公司", serviceLinks: ["尾程派送"], feeItems: ["派送费", "附加费", "尾程处理费"] },
-  ],
-  "欧洲快线": [
-    { provider: "浙江融盛国际物流有限公司", serviceLinks: ["国内揽收", "干线运输", "清关"], feeItems: ["清关费", "税金", "附加费"] },
-  ],
-  "加拿大卡派": [
-    { provider: "宁波赛蓝供应链服务有限公司", serviceLinks: ["干线运输", "清关"], feeItems: ["海运费", "订舱费", "清关费"] },
-    { provider: "深圳市以达物流有限公司", serviceLinks: ["尾程派送"], feeItems: ["派送费", "附加费"] },
-  ],
-  "美东快递": [
-    { provider: "深圳市以达物流有限公司", serviceLinks: ["国内揽收", "干线运输", "尾程派送"], feeItems: ["仓储操作费", "派送费", "尾程处理费"] },
-  ],
-};
+
 const addressTree = [
   { country: "中国", provinces: [{ name: "浙江省", cities: ["义乌", "宁波"] }, { name: "广东省", cities: ["深圳", "广州"] }] },
   { country: "美国", provinces: [{ name: "加利福尼亚州", cities: ["洛杉矶", "希尔顿"] }, { name: "纽约州", cities: ["纽约市"] }] },
@@ -138,12 +132,14 @@ function uniqueOptions(values: string[]) {
 }
 
 function getProvidersByChannel(channel: string) {
-  return (channelQuoteProviderSchemes[channel] ?? []).map((scheme) => scheme.provider);
+  return getTransportSchemesByChannel(channel).flatMap((scheme) => scheme.providers.map((row) => row.provider));
 }
 
 function getChannelsByProvider(provider: string) {
   return logisticsChannelOptions.filter((channel) =>
-    (channelQuoteProviderSchemes[channel] ?? []).some((scheme) => scheme.provider === provider),
+    getTransportSchemesByChannel(channel).some((scheme) =>
+      scheme.providers.some((row) => row.provider === provider),
+    ),
   );
 }
 
@@ -162,51 +158,6 @@ function inDateRange(dateText: string, range: DateRangeValue) {
   return true;
 }
 
-function MultiSelectFilter({
-  placeholder,
-  options,
-  value,
-  onChange,
-}: {
-  placeholder: string;
-  options: Array<{ label: string; value: string }>;
-  value: string[];
-  onChange: (nextValue: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const label = value.length === 0 ? placeholder : `${placeholder}(${value.length})`;
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        className="field-control flex w-[190px] items-center justify-between gap-2 text-left"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className={value.length ? "truncate text-text-primary" : "truncate text-text-placeholder"}>{label}</span>
-        <span className="text-text-muted">⌄</span>
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-[260px] w-[240px] overflow-auto rounded-sm border border-border bg-white p-2 shadow-md">
-          {options.map((option) => {
-            const checked = value.includes(option.value);
-            return (
-              <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-small hover:bg-bg-hover">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => onChange(checked ? value.filter((item) => item !== option.value) : [...value, option.value])}
-                />
-                <span className="truncate">{option.label}</span>
-              </label>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function AddressCascade({
   placeholder,
   value,
@@ -218,7 +169,8 @@ function AddressCascade({
   onChange: (value: string) => void;
   className?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const { open, toggle, setOpen } = useExclusiveFilterPanel(panelId);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [countryName, setCountryName] = useState(addressTree[0].country);
   const country = addressTree.find((item) => item.country === countryName) ?? addressTree[0];
@@ -237,13 +189,25 @@ function AddressCascade({
   }, []);
 
   return (
-    <div ref={containerRef} className={`relative ${className ?? ""}`}>
-      <button type="button" className="field-control flex w-full items-center justify-between text-left" onClick={() => setOpen((current) => !current)}>
-        <span className={value ? "truncate text-text-primary" : "truncate text-text-placeholder"}>{value || placeholder}</span>
-        <span className="text-text-muted">{open ? "⌃" : "⌄"}</span>
+    <div ref={containerRef} className={cn("group relative min-w-0", className)}>
+      <button
+        type="button"
+        className="field-control relative flex w-full items-center justify-between gap-2 pr-10 text-left"
+        onClick={toggle}
+      >
+        <span className={cn("min-w-0 flex-1 truncate", value ? "text-text-primary" : "text-text-placeholder")}>
+          {value || placeholder}
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted transition-transform",
+            open && "rotate-180",
+          )}
+        />
       </button>
       {open ? (
-        <div className="absolute left-0 top-[calc(100%+6px)] z-50 grid w-[600px] grid-cols-3 rounded-md border border-border bg-white shadow-lg">
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 grid w-full min-w-[280px] max-w-[min(600px,calc(100vw-32px))] grid-cols-1 rounded-md border border-border bg-white shadow-lg sm:grid-cols-3">
           <div className="max-h-[240px] overflow-auto border-r border-border py-2">
             {addressTree.map((item) => (
               <button
@@ -298,8 +262,8 @@ function SectionTitle({ children }: { children: string }) {
 
 function FormRow({ label, children, required }: { label: string; children: ReactNode; required?: boolean }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-[112px] shrink-0 text-right text-small text-text-secondary">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+      <div className="w-full shrink-0 text-left text-small text-text-secondary sm:w-[112px] sm:text-right">
         {required ? <span className="mr-1 text-danger">*</span> : null}
         {label}
       </div>
@@ -308,7 +272,40 @@ function FormRow({ label, children, required }: { label: string; children: React
   );
 }
 
-const feeLabelWidth = "w-[96px]";
+const feeFieldGridClass = "grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-4";
+const inlineFieldLabelClass = "w-[80px] shrink-0 text-right text-mini leading-none text-text-secondary";
+const inlineFieldGapClass = "gap-1.5";
+
+function DiscountTypeRadios({
+  value,
+  onChange,
+}: {
+  value: "折扣" | "减免";
+  onChange: (value: "折扣" | "减免") => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <label className="flex cursor-pointer items-center gap-1 text-mini text-text-primary">
+        <input
+          type="radio"
+          className="h-3 w-3 shrink-0"
+          checked={value === "折扣"}
+          onChange={() => onChange("折扣")}
+        />
+        折扣
+      </label>
+      <label className="flex cursor-pointer items-center gap-1 text-mini text-text-primary">
+        <input
+          type="radio"
+          className="h-3 w-3 shrink-0"
+          checked={value === "减免"}
+          onChange={() => onChange("减免")}
+        />
+        减免
+      </label>
+    </div>
+  );
+}
 
 function FeeSummaryToolbar({
   discountType,
@@ -317,6 +314,8 @@ function FeeSummaryToolbar({
   onDiscountValueChange,
   exchangeRate,
   onExchangeRateChange,
+  currency,
+  onCurrencyChange,
   total,
 }: {
   discountType: "折扣" | "减免";
@@ -325,54 +324,45 @@ function FeeSummaryToolbar({
   onDiscountValueChange: (value: number) => void;
   exchangeRate: number;
   onExchangeRateChange: (value: number) => void;
+  currency: string;
+  onCurrencyChange: (value: string) => void;
   total: number;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-10 gap-y-3 text-small">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 lg:flex-nowrap lg:justify-end">
       <SummaryField label="优惠方式">
-        <div className="flex gap-4 whitespace-nowrap">
-          <label className="flex cursor-pointer items-center gap-1">
-            <input
-              type="radio"
-              checked={discountType === "折扣"}
-              onChange={() => {
-                onDiscountTypeChange("折扣");
-                onDiscountValueChange(0);
-              }}
-            />
-            折扣
-          </label>
-          <label className="flex cursor-pointer items-center gap-1">
-            <input
-              type="radio"
-              checked={discountType === "减免"}
-              onChange={() => {
-                onDiscountTypeChange("减免");
-                onDiscountValueChange(0);
-              }}
-            />
-            减免
-          </label>
-        </div>
+        <DiscountTypeRadios
+          value={discountType}
+          onChange={(value) => {
+            onDiscountTypeChange(value);
+            onDiscountValueChange(0);
+          }}
+        />
       </SummaryField>
       <SummaryField label={discountType === "折扣" ? "折扣率(%)" : "减免金额"}>
         <AmountInput
-          className="min-w-[200px]"
+          compact
           value={discountValue}
           placeholder={discountType === "折扣" ? "1-100" : "0.00"}
           onChange={(value) => onDiscountValueChange(discountType === "折扣" ? Math.min(value, 100) : value)}
         />
       </SummaryField>
       <SummaryField label="汇率">
-        <AmountInput
-          className="min-w-[200px]"
-          value={exchangeRate}
-          placeholder="0.00"
-          onChange={onExchangeRateChange}
+        <AmountInput compact value={exchangeRate} placeholder="0.00" onChange={onExchangeRateChange} />
+      </SummaryField>
+      <SummaryField label="币种">
+        <Select
+          className={feeCurrencySelectClassName}
+          menuMinWidth={feeCurrencySelectMenuMinWidth}
+          menuDensity="compact"
+          value={currency}
+          options={optionList(feeCurrencyOptions)}
+          clearable={false}
+          onValueChange={onCurrencyChange}
         />
       </SummaryField>
       <SummaryField label="总价格">
-        <span className="inline-flex min-h-input-md min-w-[120px] items-center rounded-sm bg-bg-page px-3 font-medium tabular-nums text-text-primary">
+        <span className="inline-flex h-7 min-w-[88px] items-center rounded-sm bg-bg-page px-2 text-mini font-medium tabular-nums text-text-primary">
           {formatAmount(total)}
         </span>
       </SummaryField>
@@ -380,20 +370,23 @@ function FeeSummaryToolbar({
   );
 }
 
-function FeeSummaryDisplay({ totalPrice }: { totalPrice: string }) {
+function FeeSummaryDisplay({ totalPrice, currency }: { totalPrice: string; currency: string }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-10 gap-y-3 text-small">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 lg:flex-nowrap lg:justify-end">
       <SummaryField label="优惠方式" showColon>
-        <span className="text-text-primary">折扣</span>
+        <span className="text-mini text-text-primary">折扣</span>
       </SummaryField>
       <SummaryField label="折扣率(%)" showColon>
-        <span className="tabular-nums text-text-primary">0%</span>
+        <span className="text-mini tabular-nums text-text-primary">0%</span>
       </SummaryField>
       <SummaryField label="汇率" showColon>
-        <span className="tabular-nums text-text-primary">7.12</span>
+        <span className="text-mini tabular-nums text-text-primary">7.12</span>
+      </SummaryField>
+      <SummaryField label="币种" showColon>
+        <span className="text-mini text-text-primary">{currency || "-"}</span>
       </SummaryField>
       <SummaryField label="总价格" showColon>
-        <span className="inline-flex min-h-input-md min-w-[120px] items-center rounded-sm bg-bg-page px-3 font-medium tabular-nums text-text-primary">
+        <span className="inline-flex h-7 min-w-[88px] items-center rounded-sm bg-bg-page px-2 text-mini font-medium tabular-nums text-text-primary">
           {totalPrice}
         </span>
       </SummaryField>
@@ -403,22 +396,24 @@ function FeeSummaryDisplay({ totalPrice }: { totalPrice: string }) {
 
 function SummaryField({ label, children, showColon = false }: { label: string; children: ReactNode; showColon?: boolean }) {
   return (
-    <div className="flex items-center gap-3 whitespace-nowrap">
-      <span className={cn(feeLabelWidth, "shrink-0 text-left text-text-secondary")}>
+    <div className={cn("flex min-w-0 items-center", inlineFieldGapClass)}>
+      <span className={inlineFieldLabelClass}>
         {label}
         {showColon ? "：" : ""}
       </span>
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 shrink-0">{children}</div>
     </div>
   );
 }
 
 function FeeSectionHeader({ title, summary }: { title: string; summary: ReactNode }) {
   return (
-    <div className="mb-4 border-b border-border pb-3">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <SectionTitle>{title}</SectionTitle>
-        <div className="min-w-0 xl:flex-1 xl:pl-6">{summary}</div>
+    <div className="mb-3 border-b border-border pb-3">
+      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
+        <div className="shrink-0">
+          <SectionTitle>{title}</SectionTitle>
+        </div>
+        <div className="min-w-0 flex-1">{summary}</div>
       </div>
     </div>
   );
@@ -434,14 +429,14 @@ function SchemeMetaRow({
   showColon?: boolean;
 }) {
   return (
-    <div className="mb-4 grid gap-4 border-b border-border pb-4 text-small md:grid-cols-2 xl:grid-cols-4 xl:gap-x-10">
-      <div className="flex items-center gap-3 md:col-span-1 xl:col-span-2">
-        <span className={cn(feeLabelWidth, "shrink-0 text-left text-text-secondary")}>物流商{showColon ? "：" : ""}</span>
-        <span className="min-w-0 text-text-primary">{provider}</span>
+    <div className="mb-4 grid gap-4 border-b border-border pb-4 text-small sm:grid-cols-2">
+      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
+        <span className="shrink-0 text-left text-text-secondary sm:w-[96px]">物流商{showColon ? "：" : ""}</span>
+        <span className="min-w-0 break-words text-text-primary">{provider}</span>
       </div>
-      <div className="flex items-center gap-3 md:col-span-1 xl:col-span-2">
-        <span className={cn(feeLabelWidth, "shrink-0 text-left text-text-secondary")}>服务环节{showColon ? "：" : ""}</span>
-        <span className="min-w-0 text-text-primary">{serviceLinks.join("、") || "-"}</span>
+      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
+        <span className="shrink-0 text-left text-text-secondary sm:w-[96px]">服务环节{showColon ? "：" : ""}</span>
+        <span className="min-w-0 break-words text-text-primary">{serviceLinks.join("、") || "-"}</span>
       </div>
     </div>
   );
@@ -449,21 +444,21 @@ function SchemeMetaRow({
 
 function FeeField({ label, children, showColon = false }: { label: string; children: ReactNode; showColon?: boolean }) {
   return (
-    <div className="flex w-full items-center gap-3 text-small">
-      <span className={cn(feeLabelWidth, "shrink-0 whitespace-nowrap text-left text-text-secondary")}>
+    <div className={cn("flex min-w-0 items-center text-small", inlineFieldGapClass)}>
+      <span className={inlineFieldLabelClass}>
         {label}
         {showColon ? "：" : ""}
       </span>
-      <div className="min-w-[200px] flex-1">{children}</div>
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
 
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[112px_1fr] gap-3 text-small">
+    <div className="grid grid-cols-1 gap-1 text-small sm:grid-cols-[112px_1fr] sm:gap-3">
       <div className="text-text-secondary">{label}：</div>
-      <div className="text-text-primary">{value || "-"}</div>
+      <div className="min-w-0 break-words text-text-primary">{value || "-"}</div>
     </div>
   );
 }
@@ -488,12 +483,14 @@ function AmountInput({
   onChange,
   placeholder = "0.00",
   disabled = false,
+  compact = false,
   className,
 }: {
   value: number;
   onChange: (value: number) => void;
   placeholder?: string;
   disabled?: boolean;
+  compact?: boolean;
   className?: string;
 }) {
   function update(nextValue: number) {
@@ -501,17 +498,23 @@ function AmountInput({
   }
 
   return (
-    <div className={cn("flex w-full min-w-[200px]", className)}>
+    <div className={cn("flex w-full min-w-0 max-w-full", className)}>
       <button
         type="button"
-        className="h-input-md w-9 shrink-0 border border-border bg-bg-page text-text-secondary"
+        className={cn(
+          "shrink-0 border border-border bg-bg-page text-text-secondary",
+          compact ? "h-7 w-7 text-mini" : "h-input-md w-9",
+        )}
         disabled={disabled}
         onClick={() => update(value - 1)}
       >
         -
       </button>
       <Input
-        className="min-w-[88px] flex-1 rounded-none px-3 text-left"
+        className={cn(
+          "min-w-0 flex-1 rounded-none px-2 text-left",
+          compact ? "h-7 text-mini" : "min-w-[88px] px-3",
+        )}
         placeholder={placeholder}
         value={formatAmount(value)}
         disabled={disabled}
@@ -519,7 +522,10 @@ function AmountInput({
       />
       <button
         type="button"
-        className="h-input-md w-9 shrink-0 border border-l-0 border-border bg-bg-page text-text-secondary"
+        className={cn(
+          "shrink-0 border border-l-0 border-border bg-bg-page text-text-secondary",
+          compact ? "h-7 w-7 text-mini" : "h-input-md w-9",
+        )}
         disabled={disabled}
         onClick={() => update(value + 1)}
       >
@@ -547,33 +553,45 @@ function QuoteRateForm({
   const [origin, setOrigin] = useState(record?.origin ?? "");
   const [destination, setDestination] = useState(record?.destination ?? "");
   const [shippingCompany, setShippingCompany] = useState(record?.carrier ?? "");
-  const [currency, setCurrency] = useState(record?.currency ?? "");
   const [taxIncluded, setTaxIncluded] = useState(record?.taxIncluded ?? "是");
   const [validRange, setValidRange] = useState<DateRangeValue>({ start: record?.validFrom ?? "", end: record?.validTo ?? "" });
   const [pricingMode, setPricingMode] = useState(initialPricingMode ?? (shippingMode === "整柜" ? "整柜报价" : "按重量段报价"));
-  const [providerSchemes, setProviderSchemes] = useState<Array<{ id: string; provider: string; serviceLinks: string[]; feeItems: string[] }>>(() => {
-    const schemes = record?.logisticsChannel ? channelQuoteProviderSchemes[record.logisticsChannel] : [];
-    if (schemes?.length) {
-      return schemes.map((scheme, index) => ({ id: `scheme-${index + 1}`, ...scheme }));
+  const [transportSchemes, setTransportSchemes] = useState<ChannelTransportScheme[]>(() => {
+    if (record?.logisticsChannel) {
+      const schemes = getTransportSchemesByChannel(record.logisticsChannel);
+      if (schemes.length) {
+        return cloneTransportSchemes(schemes);
+      }
     }
-    const providers = record?.logisticsProvider ? record.logisticsProvider.split("、") : [];
-    return providers.map((provider, index) => ({ id: `scheme-${index + 1}`, provider, serviceLinks: [], feeItems: [] }));
+    if (record?.logisticsProvider) {
+      return buildLegacyTransportSchemes(record.logisticsProvider.split("、"));
+    }
+    return [];
   });
+  const [activeSchemeId, setActiveSchemeId] = useState(() => transportSchemes[0]?.id ?? "");
 
   useEffect(() => {
-    const schemes = channelQuoteProviderSchemes[logisticsChannel] ?? [];
-    setProviderSchemes(schemes.map((scheme, index) => ({ id: `scheme-${index + 1}`, ...scheme })));
+    const schemes = getTransportSchemesByChannel(logisticsChannel);
+    setTransportSchemes(cloneTransportSchemes(schemes));
+    setActiveSchemeId(schemes[0]?.id ?? "");
   }, [logisticsChannel]);
+
+  const activeScheme =
+    transportSchemes.find((scheme) => scheme.id === activeSchemeId) ?? transportSchemes[0];
+  const schemeTabs = transportSchemes.map((scheme) => ({
+    label: scheme.schemeName,
+    value: scheme.id,
+  }));
 
   function handleChannelChange(value: string) {
     setLogisticsChannel(value);
   }
 
   return (
-    <div className="space-y-4 pb-16">
+    <div className="min-w-0 space-y-4 pb-16">
       <Card>
         <SectionTitle>基本信息</SectionTitle>
-        <div className="mt-4 grid gap-x-10 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           <FormRow label="物流渠道" required>
             <Select value={logisticsChannel} placeholder="请选择物流渠道" options={optionList(logisticsChannelOptions)} onValueChange={handleChannelChange} />
           </FormRow>
@@ -585,9 +603,6 @@ function QuoteRateForm({
           </FormRow>
           <FormRow label="船司" required>
             <Input value={shippingCompany} placeholder="请输入船司" maxLength={255} onChange={(event) => setShippingCompany(event.target.value)} />
-          </FormRow>
-          <FormRow label="币种" required>
-            <Select value={currency} placeholder="请选择币种" options={optionList(currencyOptions)} onValueChange={setCurrency} />
           </FormRow>
           {shippingMode === "散货" ? (
             <FormRow label="计价方式" required>
@@ -635,29 +650,52 @@ function QuoteRateForm({
         <SectionTitle>物流商报价方案</SectionTitle>
         {!logisticsChannel ? (
           <div className="mt-3 rounded-sm border border-warning bg-warning/10 px-3 py-2 text-small text-warning">
-            请先选择物流渠道，系统会根据物流渠道自动带出对应物流商报价方案。
+            请先选择物流渠道，系统会根据物流渠道自动带出对应运输方案。
           </div>
         ) : null}
-        {logisticsChannel && providerSchemes.length === 0 ? (
+        {logisticsChannel && transportSchemes.length === 0 ? (
           <div className="mt-3 rounded-sm border border-warning bg-warning/10 px-3 py-2 text-small text-warning">
-            当前物流渠道暂未配置物流商，请先在物流渠道页面维护物流商配置。
+            当前物流渠道暂未配置运输方案，请先在物流渠道页面维护运输方案。
           </div>
         ) : null}
-        <div className="mt-4 space-y-4">
-          {providerSchemes.map((scheme) => (
-            <div key={scheme.id} className="rounded-sm border border-border p-4">
-              <SchemeMetaRow provider={scheme.provider} serviceLinks={scheme.serviceLinks} />
-              {shippingMode === "整柜" ? (
-                <FullContainerFeeSection feeItems={scheme.feeItems} />
-              ) : (
-                <LooseCargoFeeSection feeItems={scheme.feeItems} pricingMode={pricingMode} />
-              )}
+        {logisticsChannel && transportSchemes.length > 0 ? (
+          <>
+            <div className="mt-4 overflow-x-auto border-b border-border">
+              <Tabs items={schemeTabs} value={activeSchemeId || activeScheme?.id || ""} onChange={setActiveSchemeId} />
             </div>
-          ))}
-        </div>
+            <div className="mt-4 space-y-4">
+              {activeScheme?.providers.map((providerRow, index) => (
+                <div
+                  key={`${activeScheme.id}-${providerRow.provider}-${index}`}
+                  className="min-w-0 overflow-hidden rounded-sm border border-border p-3 sm:p-4"
+                >
+                  <SchemeMetaRow provider={providerRow.provider} serviceLinks={providerRow.serviceLinks} />
+                  {shippingMode === "整柜" ? (
+                    <FullContainerFeeSection
+                      channel={logisticsChannel}
+                      schemeId={activeScheme.id}
+                      provider={providerRow.provider}
+                      feeItems={providerRow.feeItems}
+                      defaultCurrency={providerRow.currency}
+                    />
+                  ) : (
+                    <LooseCargoFeeSection
+                      channel={logisticsChannel}
+                      schemeId={activeScheme.id}
+                      provider={providerRow.provider}
+                      feeItems={providerRow.feeItems}
+                      pricingMode={pricingMode}
+                      defaultCurrency={providerRow.currency}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
       </Card>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center gap-3 border-t border-border bg-white px-6 py-3 shadow-lg">
+      <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap justify-center gap-3 border-t border-border bg-white px-4 py-3 shadow-lg sm:px-6">
         <Button variant="secondary" size="sm" onClick={onBack}>取消</Button>
         <Button variant="primary" size="sm" onClick={onSubmit}>确定</Button>
       </div>
@@ -669,11 +707,24 @@ function getFeeLabels(feeItems: string[]) {
   return Array.from(new Set(feeItems));
 }
 
-function FullContainerFeeSection({ feeItems }: { feeItems: string[] }) {
+function FullContainerFeeSection({
+  channel,
+  schemeId,
+  provider,
+  feeItems,
+  defaultCurrency,
+}: {
+  channel: string;
+  schemeId: string;
+  provider: string;
+  feeItems: string[];
+  defaultCurrency: string;
+}) {
   const [feeLabels, setFeeLabels] = useState(getFeeLabels(feeItems));
   const [fees, setFees] = useState<Record<string, number>>(
     Object.fromEntries(feeLabels.map((label) => [label, 0])),
   );
+  const [currency, setCurrency] = useState(defaultCurrency);
   const [discountType, setDiscountType] = useState<"折扣" | "减免">("折扣");
   const [discountValue, setDiscountValue] = useState(0);
   const [exchangeRate, setExchangeRate] = useState(0);
@@ -684,7 +735,8 @@ function FullContainerFeeSection({ feeItems }: { feeItems: string[] }) {
     const nextLabels = getFeeLabels(feeItems);
     setFeeLabels(nextLabels);
     setFees((current) => Object.fromEntries(nextLabels.map((label) => [label, current[label] ?? 0])));
-  }, [feeItems]);
+    setCurrency(defaultCurrency);
+  }, [channel, defaultCurrency, feeItems, provider, schemeId]);
 
   return (
     <div>
@@ -698,11 +750,13 @@ function FullContainerFeeSection({ feeItems }: { feeItems: string[] }) {
             onDiscountValueChange={setDiscountValue}
             exchangeRate={exchangeRate}
             onExchangeRateChange={setExchangeRate}
+            currency={currency}
+            onCurrencyChange={setCurrency}
             total={total}
           />
         }
       />
-      <div className="grid grid-cols-1 gap-y-4 md:grid-cols-2 xl:grid-cols-4 xl:gap-x-10 xl:gap-y-4">
+      <div className={feeFieldGridClass}>
         {feeLabels.map((label) => (
           <FeeField key={label} label={label}>
             <AmountInput
@@ -716,12 +770,28 @@ function FullContainerFeeSection({ feeItems }: { feeItems: string[] }) {
   );
 }
 
-function LooseCargoFeeSection({ feeItems, pricingMode }: { feeItems: string[]; pricingMode: string }) {
+function LooseCargoFeeSection({
+  channel,
+  schemeId,
+  provider,
+  feeItems,
+  pricingMode,
+  defaultCurrency,
+}: {
+  channel: string;
+  schemeId: string;
+  provider: string;
+  feeItems: string[];
+  pricingMode: string;
+  defaultCurrency: string;
+}) {
   const [extraFeeLabels, setExtraFeeLabels] = useState(getFeeLabels(feeItems));
   const [rows, setRows] = useState([{ id: "r1", price: 0 }]);
+  const extraFeeKeys = [...extraFeeLabels, "燃油费(%)"];
   const [extraFees, setExtraFees] = useState<Record<string, number>>(
-    Object.fromEntries([...extraFeeLabels, "燃油费(%)"].map((label) => [label, 0])),
+    Object.fromEntries(extraFeeKeys.map((label) => [label, 0])),
   );
+  const [currency, setCurrency] = useState(defaultCurrency);
   const [discountType, setDiscountType] = useState<"折扣" | "减免">("折扣");
   const [discountValue, setDiscountValue] = useState(0);
   const [exchangeRate, setExchangeRate] = useState(0);
@@ -737,11 +807,11 @@ function LooseCargoFeeSection({ feeItems, pricingMode }: { feeItems: string[]; p
 
   useEffect(() => {
     const nextLabels = getFeeLabels(feeItems);
+    const nextKeys = [...nextLabels, "燃油费(%)"];
     setExtraFeeLabels(nextLabels);
-    setExtraFees((current) =>
-      Object.fromEntries([...nextLabels, "燃油费(%)"].map((label) => [label, current[label] ?? 0])),
-    );
-  }, [feeItems]);
+    setExtraFees((current) => Object.fromEntries(nextKeys.map((label) => [label, current[label] ?? 0])));
+    setCurrency(defaultCurrency);
+  }, [channel, defaultCurrency, feeItems, provider, schemeId]);
 
   return (
     <div className="space-y-4">
@@ -815,18 +885,20 @@ function LooseCargoFeeSection({ feeItems, pricingMode }: { feeItems: string[]; p
               onDiscountValueChange={setDiscountValue}
               exchangeRate={exchangeRate}
               onExchangeRateChange={setExchangeRate}
+              currency={currency}
+              onCurrencyChange={setCurrency}
               total={total}
             />
           }
         />
-        <div className="grid grid-cols-1 gap-y-4 md:grid-cols-2 xl:grid-cols-4 xl:gap-x-10 xl:gap-y-4">
+        <div className={feeFieldGridClass}>
           {extraFeeLabels.map((label) => (
             <FeeField key={label} label={label}>
               <AmountInput value={extraFees[label] ?? 0} onChange={(value) => setExtraFees((current) => ({ ...current, [label]: value }))} />
             </FeeField>
           ))}
           <FeeField label="燃油费(%)">
-            <AmountInput value={extraFees["燃油费(%)"]} onChange={(value) => setExtraFees((current) => ({ ...current, "燃油费(%)": value }))} />
+            <AmountInput value={extraFees["燃油费(%)"] ?? 0} onChange={(value) => setExtraFees((current) => ({ ...current, "燃油费(%)": value }))} />
           </FeeField>
         </div>
       </div>
@@ -843,33 +915,47 @@ function QuoteRateDetail({
   onBack: () => void;
   onEdit: () => void;
 }) {
-  const providerSchemes =
-    channelQuoteProviderSchemes[record.logisticsChannel] ??
-    record.logisticsProvider.split("、").map((provider) => ({ provider, serviceLinks: [], feeItems: [] }));
+  const transportSchemes = useMemo(() => {
+    const schemes = getTransportSchemesByChannel(record.logisticsChannel);
+    if (schemes.length) {
+      return schemes;
+    }
+    return buildLegacyTransportSchemes(record.logisticsProvider.split("、"));
+  }, [record.logisticsChannel, record.logisticsProvider]);
+  const [activeSchemeId, setActiveSchemeId] = useState(() => transportSchemes[0]?.id ?? "");
+  const activeScheme =
+    transportSchemes.find((scheme) => scheme.id === activeSchemeId) ?? transportSchemes[0];
+  const schemeTabs = transportSchemes.map((scheme) => ({
+    label: scheme.schemeName,
+    value: scheme.id,
+  }));
+
+  useEffect(() => {
+    setActiveSchemeId(transportSchemes[0]?.id ?? "");
+  }, [transportSchemes]);
 
   return (
     <div className="space-y-4">
       <Card>
-        <div className="flex items-center justify-between border-b border-border pb-3">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 border-b border-border pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="text-title font-semibold">{record.quoteId}</span>
             <Badge tone={record.shippingMode === "整柜" ? "processing" : "success"}>{record.shippingMode}</Badge>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" onClick={onBack}>关闭</Button>
             <Button variant="primary" size="sm" onClick={onEdit}>编辑</Button>
           </div>
         </div>
         <div className="mt-4">
           <SectionTitle>基本信息</SectionTitle>
-          <div className="mt-4 grid gap-x-10 gap-y-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             <InfoItem label="报价ID" value={record.quoteId} />
             <InfoItem label="发货方式" value={record.shippingMode} />
             <InfoItem label="物流渠道" value={record.logisticsChannel} />
             <InfoItem label="发货地" value={record.origin} />
             <InfoItem label="目的地" value={record.destination} />
             <InfoItem label="船司" value={record.carrier} />
-            <InfoItem label="币种" value={record.currency} />
             <InfoItem label="是否含税" value={record.taxIncluded} />
             <InfoItem label="价格有效期" value={`${record.validFrom} ~ ${record.validTo}`} />
             <InfoItem label="计价方式" value={record.pricingMode} />
@@ -878,27 +964,42 @@ function QuoteRateDetail({
       </Card>
       <Card>
         <SectionTitle>物流商报价方案</SectionTitle>
-        <div className="mt-4 space-y-4">
-          {providerSchemes.map((scheme, schemeIndex) => {
-            const feeLabels = getFeeLabels(scheme.feeItems);
+        {transportSchemes.length > 0 ? (
+          <>
+            <div className="mt-4 overflow-x-auto border-b border-border">
+              <Tabs items={schemeTabs} value={activeSchemeId || activeScheme?.id || ""} onChange={setActiveSchemeId} />
+            </div>
+            <div className="mt-4 space-y-4">
+              {activeScheme?.providers.map((providerRow, index) => {
+                const feeLabels = getFeeLabels(providerRow.feeItems);
 
-            return (
-              <div key={`${scheme.provider}-${schemeIndex}`} className="rounded-sm border border-border p-4">
-                <SchemeMetaRow provider={scheme.provider} serviceLinks={scheme.serviceLinks} showColon />
-                <FeeSectionHeader title="费用明细" summary={<FeeSummaryDisplay totalPrice={record.totalPrice} />} />
-                <div className="grid grid-cols-1 gap-y-4 md:grid-cols-2 xl:grid-cols-4 xl:gap-x-10 xl:gap-y-4">
-                  {feeLabels.map((label, index) => (
-                    <FeeField key={label} label={label} showColon>
-                      <span className="inline-flex min-h-input-md min-w-[200px] items-center tabular-nums text-text-primary">
-                        {index === 0 ? record.totalPrice : "0.00"}
-                      </span>
-                    </FeeField>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                return (
+                  <div
+                    key={`${activeScheme.id}-${providerRow.provider}-${index}`}
+                    className="min-w-0 overflow-hidden rounded-sm border border-border p-3 sm:p-4"
+                  >
+                    <SchemeMetaRow provider={providerRow.provider} serviceLinks={providerRow.serviceLinks} showColon />
+                    <FeeSectionHeader
+                      title="费用明细"
+                      summary={<FeeSummaryDisplay totalPrice={record.totalPrice} currency={providerRow.currency} />}
+                    />
+                    <div className={feeFieldGridClass}>
+                      {feeLabels.map((label, feeIndex) => (
+                        <FeeField key={label} label={label} showColon>
+                          <span className="inline-flex h-7 min-w-0 flex-1 items-center rounded-sm bg-bg-page px-2 text-mini tabular-nums text-text-primary">
+                            {feeIndex === 0 ? record.totalPrice : "0.00"}
+                          </span>
+                        </FeeField>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="mt-3 text-small text-text-muted">暂无运输方案数据</div>
+        )}
       </Card>
     </div>
   );
@@ -940,7 +1041,13 @@ export function LogisticsQuoteRatePage({
     [],
   );
   const channelFilterOptions = useMemo(() => uniqueOptions(quoteRateRecords.map((record) => record.logisticsChannel)), []);
-  const currencyFilterOptions = useMemo(() => uniqueOptions(quoteRateRecords.map((record) => record.currency)), []);
+  const currencyFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(quoteRateRecords.flatMap((record) => getChannelProviderCurrencies(record.logisticsChannel))),
+      ).map((value) => ({ label: value, value })),
+    [],
+  );
 
   const filteredRecords = useMemo(() => {
     return quoteRateRecords.filter((record) => {
@@ -949,7 +1056,8 @@ export function LogisticsQuoteRatePage({
       const matchesChannel = channels.length === 0 || channels.includes(record.logisticsChannel);
       const matchesOrigin = !origin || record.origin === origin;
       const matchesDestination = !destination || record.destination === destination;
-      const matchesCurrency = currencies.length === 0 || currencies.includes(record.currency);
+      const matchesCurrency =
+        currencies.length === 0 || getChannelProviderCurrencies(record.logisticsChannel).some((item) => currencies.includes(item));
       const timeValue = timeType === "updated" ? record.updatedAt : record.createdAt;
       const matchesTime = inDateRange(timeValue, timeRange);
       const matchesQuoteId = !quoteId.trim() || record.quoteId === quoteId.trim();
@@ -1055,11 +1163,12 @@ export function LogisticsQuoteRatePage({
   return (
     <div className="space-y-4">
       <Card>
-        <div className="flex flex-wrap items-center gap-3">
+        <ExclusiveFilterGroup>
+        <div className="flex flex-wrap items-end gap-3">
           <MultiSelectFilter placeholder="物流商" options={providerFilterOptions} value={providers} onChange={setProviders} />
           <MultiSelectFilter placeholder="物流渠道" options={channelFilterOptions} value={channels} onChange={setChannels} />
-          <AddressCascade className="w-[220px]" placeholder="发货地" value={origin} onChange={setOrigin} />
-          <AddressCascade className="w-[220px]" placeholder="目的地" value={destination} onChange={setDestination} />
+          <AddressCascade className="w-full sm:w-[220px]" placeholder="发货地" value={origin} onChange={setOrigin} />
+          <AddressCascade className="w-full sm:w-[220px]" placeholder="目的地" value={destination} onChange={setDestination} />
           <MultiSelectFilter placeholder="币种" options={currencyFilterOptions} value={currencies} onChange={setCurrencies} />
           <Select
             className="w-[128px]"
@@ -1075,6 +1184,7 @@ export function LogisticsQuoteRatePage({
           <Button variant="primary" size="sm">查询</Button>
           <Button variant="secondary" size="sm" onClick={resetFilters}>重置</Button>
         </div>
+        </ExclusiveFilterGroup>
       </Card>
 
       <Card>
@@ -1141,7 +1251,9 @@ export function LogisticsQuoteRatePage({
                   <td className="whitespace-nowrap px-3 py-3">{record.logisticsChannel}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.origin}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.destination}</td>
-                  <td className="whitespace-nowrap px-3 py-3">{record.currency}</td>
+                  <td className="whitespace-nowrap px-3 py-3">
+                    {getChannelProviderCurrencies(record.logisticsChannel).join("、") || "-"}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-3">{record.taxIncluded}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.validFrom} ~ {record.validTo}</td>
                   <td className="whitespace-nowrap px-3 py-3">

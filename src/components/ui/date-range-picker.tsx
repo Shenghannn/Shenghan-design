@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../../lib/cn";
+import { useExclusiveFilterPanel } from "./exclusive-filter-group";
 
 export type DateRangeValue = {
   start: string;
@@ -244,13 +245,17 @@ export function DateRangePicker({
   onChange,
   presets,
   className,
+  filterPanelId,
 }: {
   value: DateRangeValue;
   onChange: (value: DateRangeValue) => void;
   presets?: DateRangePreset[];
   className?: string;
+  filterPanelId?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const autoPanelId = useId();
+  const panelId = filterPanelId ?? autoPanelId;
+  const { open, setOpen, toggle } = useExclusiveFilterPanel(panelId);
   const [draft, setDraft] = useState<DateRangeValue>(value);
   const [pendingStart, setPendingStart] = useState<Date | null>(null);
   const [leftMonth, setLeftMonth] = useState(() => startOfMonth(parseDate(value.start) ?? new Date()));
@@ -276,8 +281,7 @@ export function DateRangePicker({
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
       if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-        setPendingStart(null);
+        closePanel();
       }
     }
 
@@ -329,6 +333,11 @@ export function DateRangePicker({
     syncPanels(parseDate(draft.start), parseDate(draft.end));
   }
 
+  function closePanel() {
+    setOpen(false);
+    setPendingStart(null);
+  }
+
   const displayText =
     value.start && value.end ? `${value.start} - ${value.end}` : "请选择日期范围";
 
@@ -336,7 +345,7 @@ export function DateRangePicker({
     <div ref={containerRef} className={cn("relative", className)}>
       <button
         type="button"
-        onClick={() => (open ? setOpen(false) : openPanel())}
+        onClick={() => (open ? closePanel() : openPanel())}
         className="field-control inline-flex h-input-md w-[248px] items-center justify-between gap-2 px-3 text-left"
       >
         <span className={cn("truncate", value.start && value.end ? "text-text-primary" : "text-text-placeholder")}>
