@@ -12,7 +12,7 @@ export type LogisticsPaymentFeeDetail = {
   currentDiscountAmount: string;
 };
 
-/** 服务环节汇总行，其下挂费用类型明细 */
+/** 费用分组行，其下挂费用类型明细 */
 export type LogisticsPaymentServiceLink = {
   id: string;
   serviceLinkName: string;
@@ -24,7 +24,7 @@ export type LogisticsPaymentServiceLink = {
   feeDetails: LogisticsPaymentFeeDetail[];
 };
 
-/** 物流计划单下的物流商总费用（汇总行）及服务环节明细 */
+/** 物流计划单下的物流商总费用（汇总行）及费用类型明细 */
 export type LogisticsPaymentPlanGroup = {
   poolId: string;
   relatedOrderSn: string;
@@ -52,6 +52,7 @@ export type PaymentPoolRecord = {
   logisticsPlanNo: string;
   fbaShipmentNo: string;
   logisticsBillNo: string;
+  currency: string;
   status: PayStatus;
   shipTime: string;
   receiveWarehouse: string;
@@ -165,6 +166,19 @@ const defaultProviderServiceSchemes: Record<string, { serviceLinks: string[]; fe
 
 function roundAmount(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+export function getCurrencyIcon(currency: string) {
+  if (currency === "USD") {
+    return "$";
+  }
+  if (currency === "EUR") {
+    return "€";
+  }
+  if (currency === "CAD") {
+    return "C$";
+  }
+  return "¥";
 }
 
 function distributeAmount(total: number, count: number) {
@@ -281,7 +295,7 @@ export function poolRecordToPlanGroup(record: PaymentPoolRecord): LogisticsPayme
     paidAmount: record.amountPaid,
     applyingAmount: record.applyingAmount,
     notApplyAmount: record.notApplyAmount,
-    currencyIcon: "¥",
+    currencyIcon: getCurrencyIcon(record.currency),
     serviceLinks,
   };
 }
@@ -328,6 +342,7 @@ export const paymentPoolRecords: PaymentPoolRecord[] = [
     logisticsPlanNo: "LP260409000001",
     fbaShipmentNo: "FBA18X2K9PQR",
     logisticsBillNo: "YWFH26060001",
+    currency: "CNY",
     status: "未付清",
     shipTime: "2026-04-08 14:20:00",
     receiveWarehouse: "FBA-ONT8",
@@ -353,6 +368,7 @@ export const paymentPoolRecords: PaymentPoolRecord[] = [
     logisticsPlanNo: "LP260411000003",
     fbaShipmentNo: "FBA18Y3M2ABC",
     logisticsBillNo: "NBAD26060003",
+    currency: "CAD",
     status: "未付清",
     shipTime: "2026-04-11 10:05:00",
     receiveWarehouse: "FBA-YYZ4",
@@ -378,6 +394,7 @@ export const paymentPoolRecords: PaymentPoolRecord[] = [
     logisticsPlanNo: "LP260412000004",
     fbaShipmentNo: "FBA18Z4N5DEF",
     logisticsBillNo: "SZHY26060004",
+    currency: "EUR",
     status: "已付清",
     shipTime: "2026-04-12 08:30:00",
     receiveWarehouse: "测试仓库101",
@@ -402,6 +419,7 @@ export const paymentPoolRecords: PaymentPoolRecord[] = [
     logisticsPlanNo: "LP260410000002",
     fbaShipmentNo: "FBA18W1J8GHI",
     logisticsBillNo: "RSWL26060002",
+    currency: "USD",
     status: "未付清",
     shipTime: "2026-04-10 18:45:00",
     receiveWarehouse: "Walmart仓",
@@ -427,6 +445,7 @@ export const paymentPoolRecords: PaymentPoolRecord[] = [
     logisticsPlanNo: "LP2606040004",
     fbaShipmentNo: "FBA19A5B6JKL",
     logisticsBillNo: "YWFH26060005",
+    currency: "CNY",
     status: "已付清",
     shipTime: "2026-06-04 09:00:00",
     receiveWarehouse: "FBA-ONT8",
@@ -451,6 +470,7 @@ export const paymentPoolRecords: PaymentPoolRecord[] = [
     logisticsPlanNo: "LP2606050001",
     fbaShipmentNo: "FBA19C7D8MNO",
     logisticsBillNo: "YWFH26060006",
+    currency: "CNY",
     status: "未付清",
     shipTime: "2026-05-06 11:00:00",
     receiveWarehouse: "FBA-ONT8",
@@ -547,16 +567,23 @@ export function buildLogisticsPaymentCreateForm(poolIds: string[]): LogisticsPay
     accountHolderName: account.accountHolderName,
     bankOfDeposit: account.bankOfDeposit,
     bankAccount: account.bankAccount,
-    currency: "CNY",
+    currency: rows[0].currency,
     remark: "",
     planGroups: rows.map(poolRecordToPlanGroup),
   };
 }
 
-export function getAddablePoolRecords(providerName: string, existingPoolIds: string[]) {
+export function getAddablePoolRecords(
+  providerName: string,
+  existingPoolIds: string[],
+  logisticsBillNo?: string,
+  currency?: string,
+) {
   return paymentPoolRecords.filter(
     (record) =>
       record.logisticsProvider === providerName &&
+      (!logisticsBillNo || record.logisticsBillNo === logisticsBillNo) &&
+      (!currency || record.currency === currency) &&
       !existingPoolIds.includes(record.id) &&
       record.status === "未付清" &&
       record.notApplyAmount > 0 &&

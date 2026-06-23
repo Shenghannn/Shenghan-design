@@ -378,8 +378,8 @@ function FormRow({
   required?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-[118px] shrink-0 text-right text-small text-text-secondary">
+    <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+      <div className="w-full shrink-0 text-left text-small text-text-secondary sm:w-[118px] sm:text-right">
         {required ? <span className="mr-1 text-danger">*</span> : null}
         {label}
       </div>
@@ -833,10 +833,10 @@ function FirstLegLogisticsOrderForm({
   }
 
   return (
-    <div className="space-y-4 pb-8">
+    <div className="min-w-0 space-y-4 pb-8">
       <Card className="space-y-4">
         <SectionTitle>基础信息</SectionTitle>
-        <div className="grid grid-cols-4 gap-x-6 gap-y-3">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {mode !== "create" ? (
             <FormRow label="头程物流单号">
               <ReadonlyValue value={record?.firstLegNo ?? buildOrderNo()} />
@@ -881,7 +881,7 @@ function FirstLegLogisticsOrderForm({
 
       <Card className="space-y-4">
         <SectionTitle>收件信息</SectionTitle>
-        <div className="grid grid-cols-4 gap-x-6 gap-y-3">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           <FormRow label="收货地址类型" required>
             {isReadonly ? <ReadonlyValue value={addressType} /> : <Select value={addressType} options={optionList(addressTypeOptions)} placeholder="请选择" onValueChange={setAddressType} />}
           </FormRow>
@@ -914,7 +914,7 @@ function FirstLegLogisticsOrderForm({
 
       <Card className="space-y-4">
         <SectionTitle>限制信息</SectionTitle>
-        <div className="grid grid-cols-6 gap-3 text-small">
+        <div className="grid grid-cols-2 gap-3 text-small md:grid-cols-3 xl:grid-cols-6">
           {[
             ["是否带电", battery],
             ["是否带磁", magnet],
@@ -933,7 +933,7 @@ function FirstLegLogisticsOrderForm({
 
       <Card className="space-y-4">
         <SectionTitle>申报信息</SectionTitle>
-        <div className="grid grid-cols-4 gap-x-6 gap-y-3">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           <FormRow label="报关方式">{isReadonly ? <ReadonlyValue value={customsMethod} /> : <Select value={customsMethod} options={optionList(customsMethodOptions)} placeholder="请选择" onValueChange={setCustomsMethod} />}</FormRow>
           <FormRow label="税务方式">{isReadonly ? <ReadonlyValue value={taxMethod} /> : <Select value={taxMethod} options={optionList(taxMethodOptions)} placeholder="请选择" onValueChange={setTaxMethod} />}</FormRow>
           <FormRow label="VAT/EORI">{isReadonly ? <ReadonlyValue value={vatEori} /> : <Input value={vatEori} placeholder="请输入VAT/EORI" onChange={(event) => setVatEori(event.target.value)} />}</FormRow>
@@ -1035,7 +1035,7 @@ function FirstLegLogisticsOrderForm({
         </div>
       </Card>
 
-      <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-bg-container px-4 py-3 shadow-sm">
+      <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-border bg-bg-container px-4 py-3 shadow-sm">
         <Button variant="secondary" size="sm" onClick={onBack}>{isReadonly ? "返回" : "取消"}</Button>
         {!isReadonly ? <Button variant="primary" size="sm" onClick={onSubmit}>保存</Button> : null}
       </div>
@@ -1090,7 +1090,7 @@ function FirstLegLogisticsOrderForm({
         </div>
       </Modal>
 
-      <Modal open={stockupModalOpen} title="关联备货单" widthClassName="w-[720px]" onClose={() => setStockupModalOpen(false)}>
+      <Modal open={stockupModalOpen} title="关联备货单" widthClassName="w-[min(720px,96vw)]" onClose={() => setStockupModalOpen(false)}>
         <div className="space-y-3">
           <div className="rounded-sm bg-bg-page px-3 py-2 text-small text-text-muted">
             仅展示与当前物流计划单匹配的备货单，已关联其他单据的备货单不可选择。
@@ -1136,7 +1136,7 @@ function FirstLegLogisticsOrderForm({
         </div>
       </Modal>
 
-      <Modal open={batchModalOpen} title={`批量编辑${batchEditableFieldLabels[batchField]}`} widthClassName="w-[520px]" onClose={() => setBatchModalOpen(false)}>
+      <Modal open={batchModalOpen} title={`批量编辑${batchEditableFieldLabels[batchField]}`} widthClassName="w-[min(520px,96vw)]" onClose={() => setBatchModalOpen(false)}>
         <div className="space-y-3">
           <FormRow label="批量值">
             <Input value={batchValue} placeholder={`请输入${batchEditableFieldLabels[batchField]}`} onChange={(event) => setBatchValue(event.target.value)} />

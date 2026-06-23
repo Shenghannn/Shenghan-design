@@ -7,12 +7,11 @@ import { Checkbox } from "../components/ui/checkbox";
 import {
   buildLogisticsPaymentCreateForm,
   getAddablePoolRecords,
+  getCurrencyIcon,
   paymentPoolRecords,
   getPlanGroupFeeDetails,
   poolRecordToPlanGroup,
-  sumFeeDetailField,
   sumPlanGroupField,
-  sumServiceLinkField,
   type LogisticsPaymentFeeDetail,
   type LogisticsPaymentLineItem,
   type LogisticsPaymentPlanGroup,
@@ -88,21 +87,17 @@ function buildSingleFeePlanGroup(
   };
 }
 
-function serviceLinkKey(poolId: string, linkId: string) {
-  return `${poolId}:${linkId}`;
-}
-
 function PlanDimensionCells({
   show,
   planSerial,
   relatedOrderSn,
-  logisticsChannel,
+  logisticsOrderSn,
   relatedOrderLink,
 }: {
   show: boolean;
   planSerial: number;
   relatedOrderSn: string;
-  logisticsChannel: string;
+  logisticsOrderSn: string;
   relatedOrderLink?: boolean;
 }) {
   if (!show) {
@@ -127,7 +122,7 @@ function PlanDimensionCells({
           relatedOrderSn
         )}
       </td>
-      <td className="whitespace-nowrap px-3 py-3 align-top">{logisticsChannel}</td>
+      <td className="whitespace-nowrap px-3 py-3 align-top">{logisticsOrderSn}</td>
     </>
   );
 }
@@ -202,17 +197,12 @@ type LogisticsPaymentDetail = {
 const tableHeadCell = "whitespace-nowrap px-3 py-3 text-left text-small font-medium";
 const paymentMethodOptions = ["账期支付", "网银转账", "网上支付", "跨境宝2.0"];
 
-function toggleServiceLinkExpanded(
-  expandedServiceLinks: Record<string, boolean>,
-  poolId: string,
-  linkId: string,
-) {
-  const key = serviceLinkKey(poolId, linkId);
-  return { ...expandedServiceLinks, [key]: !(expandedServiceLinks[key] ?? true) };
+function toggleFeeItemsExpanded(expandedFeeItems: Record<string, boolean>, poolId: string) {
+  return { ...expandedFeeItems, [poolId]: !(expandedFeeItems[poolId] ?? false) };
 }
 
-function isServiceLinkExpanded(expandedServiceLinks: Record<string, boolean>, poolId: string, linkId: string) {
-  return expandedServiceLinks[serviceLinkKey(poolId, linkId)] ?? true;
+function isFeeItemsExpanded(expandedFeeItems: Record<string, boolean>, poolId: string) {
+  return expandedFeeItems[poolId] ?? false;
 }
 
 const planDetailAmountHead = (
@@ -229,8 +219,7 @@ const planDetailTableHead = (
   <>
     <th className={tableHeadCell}>序号</th>
     <th className={tableHeadCell}>关联单号</th>
-    <th className={tableHeadCell}>物流渠道</th>
-    <th className={tableHeadCell}>服务环节</th>
+    <th className={tableHeadCell}>物流商单号</th>
     <th className={tableHeadCell}>费用类型</th>
     {planDetailAmountHead}
   </>
@@ -616,17 +605,23 @@ function LogisticsPaymentRequestFormPage({
   const [planGroups, setPlanGroups] = useState<LogisticsPaymentPlanGroup[]>(
     mode === "create" ? createForm?.planGroups ?? [] : editDetail?.planGroups ?? [],
   );
-  const [expandedServiceLinks, setExpandedServiceLinks] = useState<Record<string, boolean>>({});
+  const [expandedFeeItems, setExpandedFeeItems] = useState<Record<string, boolean>>({});
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [planSelection, setPlanSelection] = useState<string[]>([]);
 
   const addablePoolRecords = useMemo(
-    () => getAddablePoolRecords(providerName, planGroups.map((group) => group.poolId)),
-    [planGroups, providerName],
+    () =>
+      getAddablePoolRecords(
+        providerName,
+        planGroups.map((group) => group.poolId),
+        planGroups[0]?.logisticsOrderSn,
+        accountInfo.currency,
+      ),
+    [accountInfo.currency, planGroups, providerName],
   );
 
-  function toggleServiceLink(poolId: string, linkId: string) {
-    setExpandedServiceLinks((current) => toggleServiceLinkExpanded(current, poolId, linkId));
+  function toggleFeeItems(poolId: string) {
+    setExpandedFeeItems((current) => toggleFeeItemsExpanded(current, poolId));
   }
 
   if ((mode === "create" && !createForm) || (mode === "edit" && !editDetail)) {
@@ -858,13 +853,13 @@ function LogisticsPaymentRequestFormPage({
           <div>
             <SectionTitle>物流计划单明细</SectionTitle>
             <div className="mt-1 text-mini text-text-muted">
-              按序号、关联单号、物流渠道、服务环节展示；一个序号对应一个关联单号，费用类型为子行
+              按序号、关联单号、物流商单号展示；费用项可展开查看费用类型明细
             </div>
           </div>
           <Button variant="secondary" size="sm" onClick={() => setPlanModalOpen(true)}>添加物流计划单</Button>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1500px] border-collapse text-left text-small">
+          <table className="w-full min-w-[1380px] border-collapse text-left text-small">
             <thead className="bg-bg-page text-text-muted">
               <tr>
                 {planDetailTableHead}
@@ -881,64 +876,61 @@ function LogisticsPaymentRequestFormPage({
             <tbody className="divide-y divide-border bg-white">
               {planGroups.flatMap((group, groupIndex) => {
                 const planSerial = groupIndex + 1;
-                return group.serviceLinks.flatMap((link, linkIndex) => {
-                  const linkApply = sumServiceLinkField(link, "currentApplyAmount");
-                  const linkDiscount = sumServiceLinkField(link, "currentDiscountAmount");
-                  const linkExpanded = isServiceLinkExpanded(expandedServiceLinks, group.poolId, link.id);
-                  const rows: ReactNode[] = [
-                    <tr key={link.id} className="bg-[#fafbfd] font-medium">
+                const feeDetails = getPlanGroupFeeDetails(group);
+                const groupApply = sumPlanGroupField(group, "currentApplyAmount");
+                const groupDiscount = sumPlanGroupField(group, "currentDiscountAmount");
+                const feeItemsExpanded = isFeeItemsExpanded(expandedFeeItems, group.poolId);
+                const rows: ReactNode[] = [
+                    <tr key={group.poolId} className="bg-[#fafbfd] font-medium">
                       <PlanDimensionCells
-                        show={linkIndex === 0}
+                        show
                         planSerial={planSerial}
                         relatedOrderSn={group.relatedOrderSn}
-                        logisticsChannel={group.logisticsChannel}
+                        logisticsOrderSn={group.logisticsOrderSn}
                       />
                       <td className="whitespace-nowrap px-3 py-3">
                         <div className="flex items-center">
                           <ExpandToggle
-                            expanded={linkExpanded}
-                            onToggle={() => toggleServiceLink(group.poolId, link.id)}
-                            ariaLabel={linkExpanded ? `收起${link.serviceLinkName}费用类型` : `展开${link.serviceLinkName}费用类型`}
+                            expanded={feeItemsExpanded}
+                            onToggle={() => toggleFeeItems(group.poolId)}
+                            ariaLabel={feeItemsExpanded ? `收起${group.relatedOrderSn}费用项` : `展开${group.relatedOrderSn}费用项`}
                           />
-                          {link.serviceLinkName}
+                          费用项
                         </div>
                       </td>
-                      <td className="px-3 py-3" />
-                      <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, link.feeAmount)}</td>
-                      <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, link.payableAmount)}</td>
-                      <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, link.paidAmount)}</td>
-                      <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, link.applyingAmount)}</td>
-                      <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, link.notApplyAmount)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, group.feeAmount)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, group.payableAmount)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, group.paidAmount)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, group.applyingAmount)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, group.notApplyAmount)}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-right text-text-secondary">
-                        {linkApply > 0 || link.feeDetails.some((detail) => detail.currentApplyAmount !== "")
-                          ? `${group.currencyIcon}${linkApply.toFixed(2)}`
+                        {groupApply > 0 || feeDetails.some((detail) => detail.currentApplyAmount !== "")
+                          ? `${group.currencyIcon}${groupApply.toFixed(2)}`
                           : "-"}
                       </td>
                       <td className="whitespace-nowrap px-3 py-3 text-right text-text-secondary">
-                        {linkDiscount > 0 || link.feeDetails.some((detail) => detail.currentDiscountAmount !== "")
-                          ? `${group.currencyIcon}${linkDiscount.toFixed(2)}`
+                        {groupDiscount > 0 || feeDetails.some((detail) => detail.currentDiscountAmount !== "")
+                          ? `${group.currencyIcon}${groupDiscount.toFixed(2)}`
                           : "-"}
                       </td>
                       <td className="whitespace-nowrap px-3 py-3">
-                        {linkIndex === 0 ? (
-                          <button
-                            type="button"
-                            className="border-0 bg-transparent p-0 text-danger hover:underline"
-                            onClick={() => handleRemovePlanGroup(groupIndex)}
-                          >
-                            移除
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          className="border-0 bg-transparent p-0 text-danger hover:underline"
+                          onClick={() => handleRemovePlanGroup(groupIndex)}
+                        >
+                          移除
+                        </button>
                       </td>
                     </tr>,
                   ];
 
-                  if (linkExpanded) {
+                  if (feeItemsExpanded) {
+                    group.serviceLinks.forEach((link) => {
                     link.feeDetails.forEach((detail) => {
                       rows.push(
                         <tr key={detail.id} className="bg-white">
                           <td className="px-3 py-3" colSpan={3} />
-                          <td className="px-3 py-3" />
                           <td className="whitespace-nowrap px-3 py-3 pl-8 before:mr-2 before:text-text-disabled before:content-['└']">
                             {detail.feeTypeName}
                           </td>
@@ -969,13 +961,13 @@ function LogisticsPaymentRequestFormPage({
                         </tr>,
                       );
                     });
+                    });
                   }
 
                   return rows;
-                });
               })}
               <tr className="bg-bg-page font-medium">
-                <td className="px-3 py-3" colSpan={10}>合计</td>
+                <td className="px-3 py-3" colSpan={9}>合计</td>
                 <td className="whitespace-nowrap px-3 py-3 text-right">¥{totalApply.toFixed(2)}</td>
                 <td className="whitespace-nowrap px-3 py-3 text-right">¥{totalDiscount.toFixed(2)}</td>
                 <td className="whitespace-nowrap px-3 py-3 text-right">¥{(totalApply + totalDiscount).toFixed(2)}</td>
@@ -998,6 +990,7 @@ function LogisticsPaymentRequestFormPage({
                 <th className={tableHeadCell} />
                 <th className={tableHeadCell}>物流计划单号</th>
                 <th className={tableHeadCell}>物流商单号</th>
+                <th className={tableHeadCell}>币种</th>
                 <th className={tableHeadCell}>发货仓库</th>
                 <th className={tableHeadCell}>收货仓库</th>
                 <th className={`${tableHeadCell} text-right`}>未申请</th>
@@ -1018,14 +1011,15 @@ function LogisticsPaymentRequestFormPage({
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">{record.logisticsPlanNo}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.logisticsBillNo}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.currency}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.sendWarehouse}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.receiveWarehouse}</td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right">¥{record.notApplyAmount.toFixed(2)}</td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right">{getCurrencyIcon(record.currency)}{record.notApplyAmount.toFixed(2)}</td>
                 </tr>
               ))}
               {addablePoolRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-8 text-center text-text-muted">暂无可添加的物流计划单</td>
+                  <td colSpan={7} className="px-3 py-8 text-center text-text-muted">暂无可添加的物流计划单</td>
                 </tr>
               ) : null}
             </tbody>
@@ -1052,7 +1046,7 @@ export function LogisticsPaymentRequestDetailPage({
   const detail = logisticsPaymentDetails[recordId];
   const [activeTab, setActiveTab] = useState<(typeof detailTabs)[number]["value"]>("info");
 
-  const [expandedServiceLinks, setExpandedServiceLinks] = useState<Record<string, boolean>>({});
+  const [expandedFeeItems, setExpandedFeeItems] = useState<Record<string, boolean>>({});
 
   if (!detail) {
     return (
@@ -1123,7 +1117,7 @@ export function LogisticsPaymentRequestDetailPage({
 
         {activeTab === "info" ? (
           <div className="overflow-x-auto border-t border-border">
-            <table className="w-full min-w-[1400px] border-collapse text-left text-small">
+            <table className="w-full min-w-[1280px] border-collapse text-left text-small">
               <thead className="bg-bg-page text-text-muted">
                 <tr>
                   {planDetailTableHead}
@@ -1134,50 +1128,48 @@ export function LogisticsPaymentRequestDetailPage({
               <tbody className="divide-y divide-border bg-white">
                 {planGroups.flatMap((group, groupIndex) => {
                   const planSerial = groupIndex + 1;
-                  return group.serviceLinks.flatMap((link, linkIndex) => {
-                    const linkApply = sumServiceLinkField(link, "currentApplyAmount");
-                    const linkDiscount = sumServiceLinkField(link, "currentDiscountAmount");
-                    const linkExpanded = isServiceLinkExpanded(expandedServiceLinks, group.poolId, link.id);
-                    const rows: ReactNode[] = [
-                      <tr key={link.id} className="bg-[#fafbfd] font-medium">
+                  const groupApply = sumPlanGroupField(group, "currentApplyAmount");
+                  const groupDiscount = sumPlanGroupField(group, "currentDiscountAmount");
+                  const feeItemsExpanded = isFeeItemsExpanded(expandedFeeItems, group.poolId);
+                  const rows: ReactNode[] = [
+                      <tr key={group.poolId} className="bg-[#fafbfd] font-medium">
                         <PlanDimensionCells
-                          show={linkIndex === 0}
+                          show
                           planSerial={planSerial}
                           relatedOrderSn={group.relatedOrderSn}
-                          logisticsChannel={group.logisticsChannel}
+                          logisticsOrderSn={group.logisticsOrderSn}
                           relatedOrderLink
                         />
                         <td className="whitespace-nowrap px-3 py-3">
                           <div className="flex items-center">
                             <ExpandToggle
-                              expanded={linkExpanded}
+                              expanded={feeItemsExpanded}
                               onToggle={() =>
-                                setExpandedServiceLinks((current) =>
-                                  toggleServiceLinkExpanded(current, group.poolId, link.id),
+                                setExpandedFeeItems((current) =>
+                                  toggleFeeItemsExpanded(current, group.poolId),
                                 )
                               }
-                              ariaLabel={linkExpanded ? `收起${link.serviceLinkName}费用类型` : `展开${link.serviceLinkName}费用类型`}
+                              ariaLabel={feeItemsExpanded ? `收起${group.relatedOrderSn}费用项` : `展开${group.relatedOrderSn}费用项`}
                             />
-                            {link.serviceLinkName}
+                            费用项
                           </div>
                         </td>
-                        <td className="px-3 py-3" />
-                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, link.feeAmount)}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, link.payableAmount)}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, link.paidAmount)}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, link.applyingAmount)}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, link.notApplyAmount)}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, linkApply)}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, linkDiscount)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, group.feeAmount)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, group.payableAmount)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, group.paidAmount)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, group.applyingAmount)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, group.notApplyAmount)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, groupApply)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right">{formatAmountWithIcon(group.currencyIcon, groupDiscount)}</td>
                       </tr>,
                     ];
 
-                    if (linkExpanded) {
+                    if (feeItemsExpanded) {
+                      group.serviceLinks.forEach((link) => {
                       link.feeDetails.forEach((row) => {
                         rows.push(
                           <tr key={row.id}>
                             <td className="px-3 py-3" colSpan={3} />
-                            <td className="px-3 py-3" />
                             <td className="whitespace-nowrap px-3 py-3 pl-8 before:mr-2 before:text-text-disabled before:content-['└']">
                               {row.feeTypeName}
                             </td>
@@ -1191,13 +1183,13 @@ export function LogisticsPaymentRequestDetailPage({
                           </tr>,
                         );
                       });
+                      });
                     }
 
                     return rows;
-                  });
                 })}
                 <tr className="bg-bg-page font-medium">
-                  <td className="px-3 py-3" colSpan={10}>合计</td>
+                  <td className="px-3 py-3" colSpan={9}>合计</td>
                   <td className="whitespace-nowrap px-3 py-3 text-right">{currencyIcon}{totalApply.toFixed(2)}</td>
                   <td className="whitespace-nowrap px-3 py-3 text-right">{currencyIcon}{totalDiscount.toFixed(2)}</td>
                 </tr>

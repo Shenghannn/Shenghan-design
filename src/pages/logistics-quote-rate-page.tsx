@@ -9,27 +9,28 @@ import { Input } from "../components/ui/input";
 import { MultiSelectFilter } from "../components/ui/multi-select-filter";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
-import { Tabs } from "../components/ui/tabs";
 import { cn } from "../lib/cn";
 import {
-  buildLegacyTransportSchemes,
-  cloneTransportSchemes,
   feeCurrencyOptions,
   feeCurrencySelectClassName,
   feeCurrencySelectMenuMinWidth,
-  getChannelProviderCurrencies,
-  getTransportSchemesByChannel,
-  type ChannelTransportScheme,
 } from "../data/logistics-transport-schemes";
 
 type ShippingMode = "整柜" | "散货";
+type ServiceScope = "全程运输" | "分段运输";
+type ServiceTypeQuoteConfig = {
+  serviceType: string;
+  feeItems: string[];
+};
 
 type QuoteRateRecord = {
   id: string;
   quoteId: string;
+  quoteName: string;
   shippingMode: ShippingMode;
   logisticsProvider: string;
   logisticsChannel: string;
+  serviceScope: ServiceScope;
   origin: string;
   destination: string;
   currency: string;
@@ -47,7 +48,57 @@ type QuoteRateRecord = {
 
 const tableHeadCell = "whitespace-nowrap px-3 py-3 font-medium";
 const logisticsProviderOptions = ["义乌市双捷国际货运代理有限公司", "浙江融盛国际物流有限公司", "深圳市以达物流有限公司", "宁波赛蓝供应链服务有限公司"];
-const logisticsChannelOptions = ["美南标快", "美西海派", "欧洲快线", "加拿大卡派", "美东快递"];
+const serviceScopeOptions = [
+  { label: "全程运输", value: "全程运输" },
+  { label: "分段运输", value: "分段运输" },
+];
+const serviceScopeFilterOptions = [{ label: "全部服务范围", value: "all" }, ...serviceScopeOptions];
+
+const providerCurrencyMap: Record<string, string> = {
+  "义乌市双捷国际货运代理有限公司": "CNY",
+  "浙江融盛国际物流有限公司": "USD",
+  "深圳市以达物流有限公司": "USD",
+  "宁波赛蓝供应链服务有限公司": "CAD",
+};
+
+const fullTransportFeeItemsByShippingMode: Record<ShippingMode, string[]> = {
+  整柜: ["全程运输费", "提货费", "报关费", "目的港服务费", "派送费"],
+  散货: ["全程运输费", "入仓操作费", "报关费", "清关费", "派送费"],
+};
+
+const segmentedServiceTypeQuoteConfigs: ServiceTypeQuoteConfig[] = [
+  {
+    serviceType: "国内揽收",
+    feeItems: ["提货费", "入仓操作费", "装卸费"],
+  },
+  {
+    serviceType: "干线运输",
+    feeItems: ["干线运输费", "订舱费", "港杂费"],
+  },
+  {
+    serviceType: "清关服务",
+    feeItems: ["清关费", "税金", "查验服务费"],
+  },
+  {
+    serviceType: "尾程派送",
+    feeItems: ["派送费", "住宅附加费", "偏远地区附加费"],
+  },
+];
+
+function getQuoteFeeItems(serviceScope: ServiceScope, shippingMode: ShippingMode) {
+  return serviceScope === "全程运输" ? fullTransportFeeItemsByShippingMode[shippingMode] : [];
+}
+
+function getServiceTypeQuoteConfigs(serviceScope: ServiceScope, shippingMode: ShippingMode): ServiceTypeQuoteConfig[] {
+  if (serviceScope === "全程运输") {
+    return [{ serviceType: "全程运输", feeItems: getQuoteFeeItems(serviceScope, shippingMode) }];
+  }
+  return segmentedServiceTypeQuoteConfigs;
+}
+
+function getProviderCurrency(provider: string) {
+  return providerCurrencyMap[provider] ?? "CNY";
+}
 
 const addressTree = [
   { country: "中国", provinces: [{ name: "浙江省", cities: ["义乌", "宁波"] }, { name: "广东省", cities: ["深圳", "广州"] }] },
@@ -60,9 +111,11 @@ const quoteRateRecords: QuoteRateRecord[] = [
   {
     id: "qr-001",
     quoteId: "BJ202606080001",
+    quoteName: "美南标快-义乌双捷分段运输报价",
     shippingMode: "整柜",
     logisticsProvider: "义乌市双捷国际货运代理有限公司、浙江融盛国际物流有限公司",
     logisticsChannel: "美南标快",
+    serviceScope: "分段运输",
     origin: "中国-浙江省-义乌",
     destination: "美国-加利福尼亚州-洛杉矶",
     currency: "USD",
@@ -80,9 +133,11 @@ const quoteRateRecords: QuoteRateRecord[] = [
   {
     id: "qr-002",
     quoteId: "BJ202606080002",
+    quoteName: "欧洲快线-浙江融盛全程散货报价",
     shippingMode: "散货",
     logisticsProvider: "浙江融盛国际物流有限公司",
     logisticsChannel: "欧洲快线",
+    serviceScope: "全程运输",
     origin: "中国-广东省-深圳",
     destination: "德国-北威州-科隆",
     currency: "EUR",
@@ -100,9 +155,11 @@ const quoteRateRecords: QuoteRateRecord[] = [
   {
     id: "qr-003",
     quoteId: "BJ202606070018",
+    quoteName: "加拿大卡派-宁波赛蓝整柜报价",
     shippingMode: "整柜",
     logisticsProvider: "宁波赛蓝供应链服务有限公司",
     logisticsChannel: "加拿大卡派",
+    serviceScope: "全程运输",
     origin: "中国-浙江省-宁波",
     destination: "加拿大-安大略省-多伦多",
     currency: "CAD",
@@ -129,18 +186,6 @@ function optionList(values: string[]) {
 
 function uniqueOptions(values: string[]) {
   return Array.from(new Set(values)).map((value) => ({ label: value, value }));
-}
-
-function getProvidersByChannel(channel: string) {
-  return getTransportSchemesByChannel(channel).flatMap((scheme) => scheme.providers.map((row) => row.provider));
-}
-
-function getChannelsByProvider(provider: string) {
-  return logisticsChannelOptions.filter((channel) =>
-    getTransportSchemesByChannel(channel).some((scheme) =>
-      scheme.providers.some((row) => row.provider === provider),
-    ),
-  );
 }
 
 function getPrimaryLogisticsProvider(providerText: string) {
@@ -419,25 +464,12 @@ function FeeSectionHeader({ title, summary }: { title: string; summary: ReactNod
   );
 }
 
-function SchemeMetaRow({
-  provider,
-  serviceLinks,
-  showColon = false,
-}: {
-  provider: string;
-  serviceLinks: string[];
-  showColon?: boolean;
-}) {
+function ServiceTypeQuoteTitle({ serviceType }: { serviceType: string }) {
   return (
-    <div className="mb-4 grid gap-4 border-b border-border pb-4 text-small sm:grid-cols-2">
-      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
-        <span className="shrink-0 text-left text-text-secondary sm:w-[96px]">物流商{showColon ? "：" : ""}</span>
-        <span className="min-w-0 break-words text-text-primary">{provider}</span>
-      </div>
-      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
-        <span className="shrink-0 text-left text-text-secondary sm:w-[96px]">服务环节{showColon ? "：" : ""}</span>
-        <span className="min-w-0 break-words text-text-primary">{serviceLinks.join("、") || "-"}</span>
-      </div>
+    <div className="mb-4 border-b border-border pb-3">
+      <span className="border-l-4 border-primary pl-3 text-body font-semibold text-text-primary">
+        {serviceType}
+      </span>
     </div>
   );
 }
@@ -549,51 +581,49 @@ function QuoteRateForm({
   const shippingMode: ShippingMode = mode.includes("fcl") ? "整柜" : "散货";
   const initialPricingMode =
     record?.pricingMode === "按重量区间报价" ? "按重量段报价" : record?.pricingMode;
-  const [logisticsChannel, setLogisticsChannel] = useState(record?.logisticsChannel ?? "");
+  const [quoteName, setQuoteName] = useState(record?.quoteName ?? "");
+  const [logisticsProvider, setLogisticsProvider] = useState(record?.logisticsProvider.split("、")[0] ?? "");
+  const [serviceScope, setServiceScope] = useState<ServiceScope>(record?.serviceScope ?? "全程运输");
   const [origin, setOrigin] = useState(record?.origin ?? "");
   const [destination, setDestination] = useState(record?.destination ?? "");
   const [shippingCompany, setShippingCompany] = useState(record?.carrier ?? "");
   const [taxIncluded, setTaxIncluded] = useState(record?.taxIncluded ?? "是");
   const [validRange, setValidRange] = useState<DateRangeValue>({ start: record?.validFrom ?? "", end: record?.validTo ?? "" });
   const [pricingMode, setPricingMode] = useState(initialPricingMode ?? (shippingMode === "整柜" ? "整柜报价" : "按重量段报价"));
-  const [transportSchemes, setTransportSchemes] = useState<ChannelTransportScheme[]>(() => {
-    if (record?.logisticsChannel) {
-      const schemes = getTransportSchemesByChannel(record.logisticsChannel);
-      if (schemes.length) {
-        return cloneTransportSchemes(schemes);
-      }
-    }
-    if (record?.logisticsProvider) {
-      return buildLegacyTransportSchemes(record.logisticsProvider.split("、"));
-    }
-    return [];
-  });
-  const [activeSchemeId, setActiveSchemeId] = useState(() => transportSchemes[0]?.id ?? "");
-
-  useEffect(() => {
-    const schemes = getTransportSchemesByChannel(logisticsChannel);
-    setTransportSchemes(cloneTransportSchemes(schemes));
-    setActiveSchemeId(schemes[0]?.id ?? "");
-  }, [logisticsChannel]);
-
-  const activeScheme =
-    transportSchemes.find((scheme) => scheme.id === activeSchemeId) ?? transportSchemes[0];
-  const schemeTabs = transportSchemes.map((scheme) => ({
-    label: scheme.schemeName,
-    value: scheme.id,
-  }));
-
-  function handleChannelChange(value: string) {
-    setLogisticsChannel(value);
-  }
+  const serviceTypeQuoteConfigs = useMemo(
+    () => getServiceTypeQuoteConfigs(serviceScope, shippingMode),
+    [serviceScope, shippingMode],
+  );
+  const providerCurrency = getProviderCurrency(logisticsProvider);
 
   return (
     <div className="min-w-0 space-y-4 pb-16">
       <Card>
         <SectionTitle>基本信息</SectionTitle>
         <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          <FormRow label="物流渠道" required>
-            <Select value={logisticsChannel} placeholder="请选择物流渠道" options={optionList(logisticsChannelOptions)} onValueChange={handleChannelChange} />
+          <FormRow label="报价名称" required>
+            <Input
+              value={quoteName}
+              placeholder="请输入报价名称"
+              maxLength={200}
+              onChange={(event) => setQuoteName(event.target.value)}
+            />
+          </FormRow>
+          {record ? (
+            <FormRow label="报价ID">
+              <Input value={record.quoteId} readOnly />
+            </FormRow>
+          ) : null}
+          <FormRow label="物流商" required>
+            <Select value={logisticsProvider} placeholder="请选择物流商" options={optionList(logisticsProviderOptions)} onValueChange={setLogisticsProvider} />
+          </FormRow>
+          <FormRow label="服务范围" required>
+            <Select
+              value={serviceScope}
+              options={serviceScopeOptions}
+              clearable={false}
+              onValueChange={(value) => setServiceScope(value as ServiceScope)}
+            />
           </FormRow>
           <FormRow label="发货地" required>
             <AddressCascade value={origin} placeholder="请选择发货地" onChange={setOrigin} />
@@ -647,51 +677,39 @@ function QuoteRateForm({
       </Card>
 
       <Card>
-        <SectionTitle>物流商报价方案</SectionTitle>
-        {!logisticsChannel ? (
+        <SectionTitle>{serviceScope === "全程运输" ? "全程运输报价" : "服务类型报价"}</SectionTitle>
+        {!logisticsProvider ? (
           <div className="mt-3 rounded-sm border border-warning bg-warning/10 px-3 py-2 text-small text-warning">
-            请先选择物流渠道，系统会根据物流渠道自动带出对应运输方案。
+            请先选择物流商，系统会根据服务范围和服务类型展示对应费用项。
           </div>
         ) : null}
-        {logisticsChannel && transportSchemes.length === 0 ? (
-          <div className="mt-3 rounded-sm border border-warning bg-warning/10 px-3 py-2 text-small text-warning">
-            当前物流渠道暂未配置运输方案，请先在物流渠道页面维护运输方案。
+        {logisticsProvider ? (
+          <div className="mt-4 space-y-4">
+            {serviceTypeQuoteConfigs.map((config) => (
+              <div
+                key={config.serviceType}
+                className="min-w-0 overflow-hidden rounded-sm border border-border p-3 sm:p-4"
+              >
+                <ServiceTypeQuoteTitle serviceType={config.serviceType} />
+                {shippingMode === "整柜" ? (
+                  <FullContainerFeeSection
+                    scope={`${serviceScope}-${config.serviceType}`}
+                    provider={logisticsProvider}
+                    feeItems={config.feeItems}
+                    defaultCurrency={providerCurrency}
+                  />
+                ) : (
+                  <LooseCargoFeeSection
+                    scope={`${serviceScope}-${config.serviceType}`}
+                    provider={logisticsProvider}
+                    feeItems={config.feeItems}
+                    pricingMode={pricingMode}
+                    defaultCurrency={providerCurrency}
+                  />
+                )}
+              </div>
+            ))}
           </div>
-        ) : null}
-        {logisticsChannel && transportSchemes.length > 0 ? (
-          <>
-            <div className="mt-4 overflow-x-auto border-b border-border">
-              <Tabs items={schemeTabs} value={activeSchemeId || activeScheme?.id || ""} onChange={setActiveSchemeId} />
-            </div>
-            <div className="mt-4 space-y-4">
-              {activeScheme?.providers.map((providerRow, index) => (
-                <div
-                  key={`${activeScheme.id}-${providerRow.provider}-${index}`}
-                  className="min-w-0 overflow-hidden rounded-sm border border-border p-3 sm:p-4"
-                >
-                  <SchemeMetaRow provider={providerRow.provider} serviceLinks={providerRow.serviceLinks} />
-                  {shippingMode === "整柜" ? (
-                    <FullContainerFeeSection
-                      channel={logisticsChannel}
-                      schemeId={activeScheme.id}
-                      provider={providerRow.provider}
-                      feeItems={providerRow.feeItems}
-                      defaultCurrency={providerRow.currency}
-                    />
-                  ) : (
-                    <LooseCargoFeeSection
-                      channel={logisticsChannel}
-                      schemeId={activeScheme.id}
-                      provider={providerRow.provider}
-                      feeItems={providerRow.feeItems}
-                      pricingMode={pricingMode}
-                      defaultCurrency={providerRow.currency}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </>
         ) : null}
       </Card>
 
@@ -708,14 +726,12 @@ function getFeeLabels(feeItems: string[]) {
 }
 
 function FullContainerFeeSection({
-  channel,
-  schemeId,
+  scope,
   provider,
   feeItems,
   defaultCurrency,
 }: {
-  channel: string;
-  schemeId: string;
+  scope: string;
   provider: string;
   feeItems: string[];
   defaultCurrency: string;
@@ -736,7 +752,7 @@ function FullContainerFeeSection({
     setFeeLabels(nextLabels);
     setFees((current) => Object.fromEntries(nextLabels.map((label) => [label, current[label] ?? 0])));
     setCurrency(defaultCurrency);
-  }, [channel, defaultCurrency, feeItems, provider, schemeId]);
+  }, [defaultCurrency, feeItems, provider, scope]);
 
   return (
     <div>
@@ -771,15 +787,13 @@ function FullContainerFeeSection({
 }
 
 function LooseCargoFeeSection({
-  channel,
-  schemeId,
+  scope,
   provider,
   feeItems,
   pricingMode,
   defaultCurrency,
 }: {
-  channel: string;
-  schemeId: string;
+  scope: string;
   provider: string;
   feeItems: string[];
   pricingMode: string;
@@ -811,7 +825,7 @@ function LooseCargoFeeSection({
     setExtraFeeLabels(nextLabels);
     setExtraFees((current) => Object.fromEntries(nextKeys.map((label) => [label, current[label] ?? 0])));
     setCurrency(defaultCurrency);
-  }, [channel, defaultCurrency, feeItems, provider, schemeId]);
+  }, [defaultCurrency, feeItems, provider, scope]);
 
   return (
     <div className="space-y-4">
@@ -915,24 +929,8 @@ function QuoteRateDetail({
   onBack: () => void;
   onEdit: () => void;
 }) {
-  const transportSchemes = useMemo(() => {
-    const schemes = getTransportSchemesByChannel(record.logisticsChannel);
-    if (schemes.length) {
-      return schemes;
-    }
-    return buildLegacyTransportSchemes(record.logisticsProvider.split("、"));
-  }, [record.logisticsChannel, record.logisticsProvider]);
-  const [activeSchemeId, setActiveSchemeId] = useState(() => transportSchemes[0]?.id ?? "");
-  const activeScheme =
-    transportSchemes.find((scheme) => scheme.id === activeSchemeId) ?? transportSchemes[0];
-  const schemeTabs = transportSchemes.map((scheme) => ({
-    label: scheme.schemeName,
-    value: scheme.id,
-  }));
-
-  useEffect(() => {
-    setActiveSchemeId(transportSchemes[0]?.id ?? "");
-  }, [transportSchemes]);
+  const provider = record.logisticsProvider.split("、")[0] ?? record.logisticsProvider;
+  const serviceTypeQuoteConfigs = getServiceTypeQuoteConfigs(record.serviceScope, record.shippingMode);
 
   return (
     <div className="space-y-4">
@@ -950,9 +948,11 @@ function QuoteRateDetail({
         <div className="mt-4">
           <SectionTitle>基本信息</SectionTitle>
           <div className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <InfoItem label="报价名称" value={record.quoteName} />
             <InfoItem label="报价ID" value={record.quoteId} />
             <InfoItem label="发货方式" value={record.shippingMode} />
-            <InfoItem label="物流渠道" value={record.logisticsChannel} />
+            <InfoItem label="物流商" value={provider} />
+            <InfoItem label="服务范围" value={record.serviceScope} />
             <InfoItem label="发货地" value={record.origin} />
             <InfoItem label="目的地" value={record.destination} />
             <InfoItem label="船司" value={record.carrier} />
@@ -963,43 +963,30 @@ function QuoteRateDetail({
         </div>
       </Card>
       <Card>
-        <SectionTitle>物流商报价方案</SectionTitle>
-        {transportSchemes.length > 0 ? (
-          <>
-            <div className="mt-4 overflow-x-auto border-b border-border">
-              <Tabs items={schemeTabs} value={activeSchemeId || activeScheme?.id || ""} onChange={setActiveSchemeId} />
+        <SectionTitle>{record.serviceScope === "全程运输" ? "全程运输报价" : "服务类型报价"}</SectionTitle>
+        <div className="mt-4 space-y-4">
+          {serviceTypeQuoteConfigs.map((config) => (
+            <div
+              key={config.serviceType}
+              className="min-w-0 overflow-hidden rounded-sm border border-border p-3 sm:p-4"
+            >
+              <ServiceTypeQuoteTitle serviceType={config.serviceType} />
+              <FeeSectionHeader
+                title="费用明细"
+                summary={<FeeSummaryDisplay totalPrice={record.totalPrice} currency={record.currency} />}
+              />
+              <div className={feeFieldGridClass}>
+                {config.feeItems.map((label, feeIndex) => (
+                  <FeeField key={label} label={label} showColon>
+                    <span className="inline-flex h-7 min-w-0 flex-1 items-center rounded-sm bg-bg-page px-2 text-mini tabular-nums text-text-primary">
+                      {feeIndex === 0 ? record.totalPrice : "0.00"}
+                    </span>
+                  </FeeField>
+                ))}
+              </div>
             </div>
-            <div className="mt-4 space-y-4">
-              {activeScheme?.providers.map((providerRow, index) => {
-                const feeLabels = getFeeLabels(providerRow.feeItems);
-
-                return (
-                  <div
-                    key={`${activeScheme.id}-${providerRow.provider}-${index}`}
-                    className="min-w-0 overflow-hidden rounded-sm border border-border p-3 sm:p-4"
-                  >
-                    <SchemeMetaRow provider={providerRow.provider} serviceLinks={providerRow.serviceLinks} showColon />
-                    <FeeSectionHeader
-                      title="费用明细"
-                      summary={<FeeSummaryDisplay totalPrice={record.totalPrice} currency={providerRow.currency} />}
-                    />
-                    <div className={feeFieldGridClass}>
-                      {feeLabels.map((label, feeIndex) => (
-                        <FeeField key={label} label={label} showColon>
-                          <span className="inline-flex h-7 min-w-0 flex-1 items-center rounded-sm bg-bg-page px-2 text-mini tabular-nums text-text-primary">
-                            {feeIndex === 0 ? record.totalPrice : "0.00"}
-                          </span>
-                        </FeeField>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        ) : (
-          <div className="mt-3 text-small text-text-muted">暂无运输方案数据</div>
-        )}
+          ))}
+          </div>
       </Card>
     </div>
   );
@@ -1024,14 +1011,14 @@ export function LogisticsQuoteRatePage({
 }) {
   const [view, setView] = useState<"list" | "create-fcl" | "edit-fcl" | "create-lcl" | "edit-lcl" | "detail">("list");
   const [activeRecordId, setActiveRecordId] = useState(quoteRateRecords[0]?.id ?? "");
+  const [quoteNameFilter, setQuoteNameFilter] = useState("");
+  const [quoteId, setQuoteId] = useState("");
   const [providers, setProviders] = useState<string[]>([]);
-  const [channels, setChannels] = useState<string[]>([]);
+  const [serviceScopeFilter, setServiceScopeFilter] = useState("all");
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
-  const [currencies, setCurrencies] = useState<string[]>([]);
   const [timeType, setTimeType] = useState("created");
   const [timeRange, setTimeRange] = useState<DateRangeValue>(emptyRange());
-  const [quoteId, setQuoteId] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -1040,30 +1027,21 @@ export function LogisticsQuoteRatePage({
     () => uniqueOptions(quoteRateRecords.map((record) => getPrimaryLogisticsProvider(record.logisticsProvider))),
     [],
   );
-  const channelFilterOptions = useMemo(() => uniqueOptions(quoteRateRecords.map((record) => record.logisticsChannel)), []);
-  const currencyFilterOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(quoteRateRecords.flatMap((record) => getChannelProviderCurrencies(record.logisticsChannel))),
-      ).map((value) => ({ label: value, value })),
-    [],
-  );
 
   const filteredRecords = useMemo(() => {
     return quoteRateRecords.filter((record) => {
       const recordProvider = getPrimaryLogisticsProvider(record.logisticsProvider);
+      const matchesQuoteName = !quoteNameFilter.trim() || record.quoteName.includes(quoteNameFilter.trim());
+      const matchesQuoteId = !quoteId.trim() || record.quoteId === quoteId.trim();
       const matchesProvider = providers.length === 0 || providers.includes(recordProvider);
-      const matchesChannel = channels.length === 0 || channels.includes(record.logisticsChannel);
+      const matchesServiceScope = serviceScopeFilter === "all" || record.serviceScope === serviceScopeFilter;
       const matchesOrigin = !origin || record.origin === origin;
       const matchesDestination = !destination || record.destination === destination;
-      const matchesCurrency =
-        currencies.length === 0 || getChannelProviderCurrencies(record.logisticsChannel).some((item) => currencies.includes(item));
       const timeValue = timeType === "updated" ? record.updatedAt : record.createdAt;
       const matchesTime = inDateRange(timeValue, timeRange);
-      const matchesQuoteId = !quoteId.trim() || record.quoteId === quoteId.trim();
-      return matchesProvider && matchesChannel && matchesOrigin && matchesDestination && matchesCurrency && matchesTime && matchesQuoteId;
+      return matchesQuoteName && matchesQuoteId && matchesProvider && matchesServiceScope && matchesOrigin && matchesDestination && matchesTime;
     });
-  }, [channels, currencies, destination, origin, providers, quoteId, timeRange, timeType]);
+  }, [destination, origin, providers, quoteId, quoteNameFilter, serviceScopeFilter, timeRange, timeType]);
 
   const totalPages = Math.max(Math.ceil(filteredRecords.length / pageSize), 1);
   const safePage = Math.min(page, totalPages);
@@ -1098,14 +1076,14 @@ export function LogisticsQuoteRatePage({
   }, [activeWorkspaceTab]);
 
   function resetFilters() {
+    setQuoteNameFilter("");
+    setQuoteId("");
     setProviders([]);
-    setChannels([]);
+    setServiceScopeFilter("all");
     setOrigin("");
     setDestination("");
-    setCurrencies([]);
     setTimeType("created");
     setTimeRange(emptyRange());
-    setQuoteId("");
     setPage(1);
   }
 
@@ -1165,22 +1143,42 @@ export function LogisticsQuoteRatePage({
       <Card>
         <ExclusiveFilterGroup>
         <div className="flex flex-wrap items-end gap-3">
+          <Input
+            className="w-[200px]"
+            placeholder="请输入报价名称"
+            value={quoteNameFilter}
+            onChange={(event) => {
+              setQuoteNameFilter(event.target.value);
+              setPage(1);
+            }}
+          />
+          <Input className="w-[180px]" placeholder="报价ID" value={quoteId} onChange={(event) => {
+            setQuoteId(event.target.value);
+            setPage(1);
+          }} />
           <MultiSelectFilter placeholder="物流商" options={providerFilterOptions} value={providers} onChange={setProviders} />
-          <MultiSelectFilter placeholder="物流渠道" options={channelFilterOptions} value={channels} onChange={setChannels} />
+          <Select className="w-[150px]" options={serviceScopeFilterOptions} value={serviceScopeFilter} onValueChange={(value) => {
+            setServiceScopeFilter(value);
+            setPage(1);
+          }} />
           <AddressCascade className="w-full sm:w-[220px]" placeholder="发货地" value={origin} onChange={setOrigin} />
           <AddressCascade className="w-full sm:w-[220px]" placeholder="目的地" value={destination} onChange={setDestination} />
-          <MultiSelectFilter placeholder="币种" options={currencyFilterOptions} value={currencies} onChange={setCurrencies} />
           <Select
             className="w-[128px]"
             value={timeType}
-            onValueChange={setTimeType}
+            onValueChange={(value) => {
+              setTimeType(value);
+              setPage(1);
+            }}
             options={[
               { label: "创建时间", value: "created" },
               { label: "更新时间", value: "updated" },
             ]}
           />
-          <DateRangePicker value={timeRange} onChange={setTimeRange} />
-          <Input className="w-[180px]" placeholder="报价ID" value={quoteId} onChange={(event) => setQuoteId(event.target.value)} />
+          <DateRangePicker value={timeRange} onChange={(value) => {
+            setTimeRange(value);
+            setPage(1);
+          }} />
           <Button variant="primary" size="sm">查询</Button>
           <Button variant="secondary" size="sm" onClick={resetFilters}>重置</Button>
         </div>
@@ -1217,19 +1215,19 @@ export function LogisticsQuoteRatePage({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1900px] border-collapse text-left text-small">
+          <table className="w-full min-w-[1720px] border-collapse text-left text-small">
             <thead className="bg-bg-page text-text-muted">
               <tr>
                 <th className={`w-10 ${tableHeadCell}`}>
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} />
                 </th>
+                <th className={tableHeadCell}>报价名称</th>
                 <th className={tableHeadCell}>报价ID</th>
                 <th className={tableHeadCell}>发货方式</th>
                 <th className={tableHeadCell}>物流商</th>
-                <th className={tableHeadCell}>物流渠道</th>
+                <th className={tableHeadCell}>服务范围</th>
                 <th className={tableHeadCell}>发货地</th>
                 <th className={tableHeadCell}>目的地</th>
-                <th className={tableHeadCell}>币种</th>
                 <th className={tableHeadCell}>是否含税</th>
                 <th className={tableHeadCell}>价格有效期</th>
                 <th className={tableHeadCell}>创建人/创建时间</th>
@@ -1243,17 +1241,15 @@ export function LogisticsQuoteRatePage({
                   <td className="px-3 py-3">
                     <input type="checkbox" checked={selectedIds.includes(record.id)} onChange={() => toggleRow(record.id)} />
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 font-medium text-primary">{record.quoteId}</td>
+                  <td className="whitespace-nowrap px-3 py-3 font-medium text-primary">{record.quoteName}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.quoteId}</td>
                   <td className="whitespace-nowrap px-3 py-3">
                     <Badge tone={record.shippingMode === "整柜" ? "processing" : "success"}>{record.shippingMode}</Badge>
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">{getPrimaryLogisticsProvider(record.logisticsProvider)}</td>
-                  <td className="whitespace-nowrap px-3 py-3">{record.logisticsChannel}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.serviceScope}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.origin}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.destination}</td>
-                  <td className="whitespace-nowrap px-3 py-3">
-                    {getChannelProviderCurrencies(record.logisticsChannel).join("、") || "-"}
-                  </td>
                   <td className="whitespace-nowrap px-3 py-3">{record.taxIncluded}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.validFrom} ~ {record.validTo}</td>
                   <td className="whitespace-nowrap px-3 py-3">

@@ -6,6 +6,13 @@ export type TransportSchemeProvider = {
 };
 
 export const feeCurrencyOptions = ["CNY", "USD", "EUR", "CAD", "GBP"];
+export const feeCurrencyToCnyRate: Record<string, number> = {
+  CNY: 1,
+  USD: 7.2,
+  EUR: 7.8,
+  CAD: 5.25,
+  GBP: 9.1,
+};
 
 /** 币种选择器：触发区适度宽度，下拉层略宽以保证选项完整展示 */
 export const feeCurrencySelectClassName = "w-[80px]";
@@ -250,18 +257,46 @@ export function getQuoteFeeCurrency(
 }
 
 export function buildFeeDetailRowsFromScheme(channel: string, scheme: ChannelTransportScheme): FeeDetailRow[] {
-  return flattenSchemeFeeItems(scheme).map((item, index) => {
+  const rowsByKey = new Map<
+    string,
+    {
+      provider: string;
+      serviceLinks: string[];
+      feeType: string;
+      estimatedAmount: number;
+      currency: string;
+    }
+  >();
+
+  flattenSchemeFeeItems(scheme).forEach((item) => {
     const quote = getQuoteFeeRate(channel, scheme.id, item.provider, item.feeType);
     const currency = getProviderCurrency(scheme, item.provider);
+    const key = `${item.provider}::${item.feeType}::${currency}`;
+    const current = rowsByKey.get(key);
+    if (current) {
+      current.estimatedAmount += parseFeeAmount(quote?.estimatedAmount ?? "0.00");
+      current.serviceLinks = Array.from(new Set([...current.serviceLinks, ...item.serviceLinks]));
+      return;
+    }
+    rowsByKey.set(key, {
+      provider: item.provider,
+      serviceLinks: [...item.serviceLinks],
+      feeType: item.feeType,
+      estimatedAmount: parseFeeAmount(quote?.estimatedAmount ?? "0.00"),
+      currency,
+    });
+  });
+
+  return Array.from(rowsByKey.values()).map((item, index) => {
     return {
       id: `fee-system-${scheme.id}-${index + 1}`,
       provider: item.provider,
       serviceLinks: [...item.serviceLinks],
       feeType: item.feeType,
-      estimatedAmount: quote?.estimatedAmount ?? "0.00",
-      estimatedCurrency: currency,
+      estimatedAmount: formatFeeAmount(item.estimatedAmount),
+      estimatedCurrency: item.currency,
       actualAmount: "0.00",
-      actualCurrency: currency,
+      actualCurrency: item.currency,
       isCustom: false,
     };
   });

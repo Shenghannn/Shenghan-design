@@ -8,6 +8,17 @@ alwaysApply: false
 
 面向 `Shenghan-design` 管理后台原型。默认 **mobile-first**，宽屏逐步增列，窄屏优先可读性与可点击区域，不依赖浏览器缩放才能操作。
 
+## 强制执行
+
+新增页面、调整页面、重构表单/详情/列表/弹窗后，必须同步检查本规则。不能只在当前分辨率下看起来正常就结束；页面在浏览器缩放、分辨率变化、侧边栏宽度变化时仍需保持可读、可操作、不重叠、不横向撑破主容器。
+
+如果改动涉及 `src/pages/**/*.tsx` 或 `src/components/ui/**/*.tsx` 中的布局，完成前必须至少检查：
+
+- 是否存在无断点的固定列布局，如 `grid-cols-4`、`grid-cols-6`。
+- 是否存在无法换行的横向 `flex` 布局。
+- 是否存在固定宽弹窗、固定宽表单区域、固定宽工具栏导致小视口溢出。
+- 是否给宽表格提供外层横向滚动，而不是让整页布局被表格撑破。
+
 ## 断点与布局密度
 
 | 断点 | 宽度 | 典型场景 |
@@ -31,6 +42,9 @@ alwaysApply: false
 
 // 基本信息区
 <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+
+// 复杂表单区：默认单列，按断点增列。禁止直接写 grid-cols-4。
+<div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
 
 // 固定底栏：允许换行 + 小屏减小左右内边距
 <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap justify-center gap-3 border-t border-border bg-white px-4 py-3 shadow-lg sm:px-6">
@@ -56,11 +70,13 @@ alwaysApply: false
 - **宽表格**：外层 `overflow-x-auto`（或 `-mx-px overflow-x-auto` 贴边），内层 `min-w-[…]` + 可选 `table-fixed` + `colgroup` 控制列宽；单元格 `align-top`，长文本 `break-words`。
 - **运输方案 Tab**：Tab 容器加 `overflow-x-auto`，避免方案名过多时挤压或换行错乱。
 - **区块头**（方案名 + 操作）：`flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`。
+- **表格输入控件**：可给单元格内输入框设置合理 `w-[...]`，但必须放在可横向滚动表格内，不能撑破页面主容器。
 
 ## 浮层与级联选择
 
 - 触发器：`min-w-0 flex-1` + `pr-10`，箭头与 `Select` 一致用 `ChevronDown`（`absolute right-3`，展开 `rotate-180`）。
 - 下拉面板宽度：`w-full max-w-[min(600px,calc(100vw-32px))]`，极窄屏可 `grid-cols-1`，`sm:` 起多列，避免超出视口。
+- 弹窗宽度必须使用视口上限，例如 `w-[min(720px,96vw)]` 或 `max-w-[min(100%,var(--modal-width-lg))]`，禁止裸写 `w-[720px]`、`w-[1180px]` 这类固定宽度。
 
 ## 费用明细与复合控件
 
@@ -73,9 +89,11 @@ alwaysApply: false
 
 ## 禁止项
 
-- 不要用单一 `grid-cols-4` 或无断点的横向 `flex` 塞满窄屏。
+- 不要用单一 `grid-cols-4`、`grid-cols-6` 或无断点的横向 `flex` 塞满窄屏。
 - 不要为适配而缩小表格字号或去掉 `min-w` 导致列重叠。
 - 不要写 `zoom` / `transform: scale` 做页面级缩放。
+- 不要让表单标签固定宽且始终同行；小屏下标签必须能在控件上方展示。
+- 不要提交只适配当前显示器宽度的页面。页面缩放到 125%–150% 后仍应自然降级。
 
 ## 自检清单（改完必过）
 
@@ -83,3 +101,5 @@ alwaysApply: false
 2. 表格在窄屏可横向滚动，操作列仍可见。
 3. 固定底栏不遮挡最后一块 Card 内容。
 4. Tab、多选、地址级联浮层不超出视口左右边界。
+5. 页面缩放到 125% 和 150% 时，不出现表单项互相挤压、错位、重叠或弹窗超出视口。
+6. 生成或调整页面后，若发现固定列数布局，必须改为 `grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4` 等响应式写法。

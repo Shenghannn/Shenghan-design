@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
-import { ExclusiveFilterGroup } from "../components/ui/exclusive-filter-group";
+import { DateRangePicker, type DateRangeValue } from "../components/ui/date-range-picker";
+import { ExclusiveFilterGroup, useExclusiveFilterPanel } from "../components/ui/exclusive-filter-group";
 import { Input } from "../components/ui/input";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
@@ -12,19 +13,15 @@ import { Textarea } from "../components/ui/textarea";
 import { cn } from "../lib/cn";
 
 type LogisticsChannelStatus = "启用" | "禁用";
+type FirstLegProviderMode = "single" | "multi";
+type QuoteServiceScope = "全程运输" | "分段运输";
 
 type SchemeProviderRow = {
   id: string;
   partner: string;
-  serviceLinks: string[];
-  feeItems: string[];
+  serviceTypes: string[];
+  relatedQuoteName: string;
   remark: string;
-};
-
-type TransportScheme = {
-  id: string;
-  schemeName: string;
-  providers: SchemeProviderRow[];
 };
 
 type LogisticsChannelRecord = {
@@ -37,7 +34,8 @@ type LogisticsChannelRecord = {
   agingDays: number;
   volumeFactor: string;
   remark: string;
-  transportSchemes: TransportScheme[];
+  firstLegProviderMode: FirstLegProviderMode;
+  providers: SchemeProviderRow[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -49,28 +47,16 @@ function createProviderRow(id?: string): SchemeProviderRow {
   return {
     id: id ?? `provider-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     partner: "",
-    serviceLinks: [],
-    feeItems: [],
+    serviceTypes: [],
+    relatedQuoteName: "",
     remark: "",
   };
 }
 
-function createTransportScheme(index: number, id?: string): TransportScheme {
-  return {
-    id: id ?? `scheme-${Date.now()}-${index}`,
-    schemeName: `方案${index}`,
-    providers: [createProviderRow(`${id ?? "scheme"}-provider-1`)],
-  };
-}
-
-function cloneTransportSchemes(schemes: TransportScheme[]): TransportScheme[] {
-  return schemes.map((scheme) => ({
-    ...scheme,
-    providers: scheme.providers.map((provider) => ({
-      ...provider,
-      serviceLinks: [...provider.serviceLinks],
-      feeItems: [...provider.feeItems],
-    })),
+function cloneProviderRows(providers: SchemeProviderRow[]): SchemeProviderRow[] {
+  return providers.map((provider) => ({
+    ...provider,
+    serviceTypes: [...provider.serviceTypes],
   }));
 }
 
@@ -96,6 +82,39 @@ const channelStatusOptions = [
   { label: "禁用", value: "禁用" },
 ];
 
+const firstLegProviderModeOptions = [
+  { label: "单一物流商", value: "single" },
+  { label: "多物流商联运", value: "multi" },
+];
+
+const firstLegProviderModeFilterOptions = [
+  { label: "全部头程物流商模式", value: "all" },
+  ...firstLegProviderModeOptions,
+];
+
+const logisticsQuoteRecords = [
+  {
+    quoteName: "美南标快-义乌双捷分段运输报价",
+    logisticsProvider: "义乌市双捷国际货运代理有限公司",
+    destination: "美国-加利福尼亚州-洛杉矶",
+    serviceScope: "分段运输" as QuoteServiceScope,
+  },
+  {
+    quoteName: "欧洲快线-浙江融盛全程散货报价",
+    logisticsProvider: "浙江融盛国际物流有限公司",
+    destination: "德国-北威州-科隆",
+    serviceScope: "全程运输" as QuoteServiceScope,
+  },
+  {
+    quoteName: "加拿大卡派-宁波赛蓝整柜报价",
+    logisticsProvider: "宁波赛蓝供应链服务有限公司",
+    destination: "加拿大-安大略省-多伦多",
+    serviceScope: "全程运输" as QuoteServiceScope,
+  },
+];
+
+const quoteNameOptions = logisticsQuoteRecords.map((record) => ({ label: record.quoteName, value: record.quoteName }));
+
 const providerOptions = [
   { label: "义乌市双捷国际货运代理有限公司", value: "义乌市双捷国际货运代理有限公司" },
   { label: "浙江融盛国际物流有限公司", value: "浙江融盛国际物流有限公司" },
@@ -103,15 +122,15 @@ const providerOptions = [
   { label: "宁波赛蓝供应链服务有限公司", value: "宁波赛蓝供应链服务有限公司" },
 ];
 
-const providerFeeItemOptions: Record<string, string[]> = {
-  "义乌市双捷国际货运代理有限公司": ["提货费", "报关费", "海运费", "订舱费", "港杂费", "单证操作费"],
-  "浙江融盛国际物流有限公司": ["清关费", "税金", "派送费", "附加费"],
-  "深圳市以达物流有限公司(谷仓海外仓)": ["派送费", "附加费", "仓储操作费", "尾程处理费"],
-  "宁波赛蓝供应链服务有限公司": ["海运费", "订舱费", "港杂费", "清关费"],
+const providerServiceTypeOptions: Record<string, string[]> = {
+  "义乌市双捷国际货运代理有限公司": ["国内揽收", "国内操作", "报关服务", "干线运输"],
+  "浙江融盛国际物流有限公司": ["清关服务", "税务处理", "尾程派送", "异常处理"],
+  "深圳市以达物流有限公司(谷仓海外仓)": ["海外仓操作", "尾程派送", "本地配送", "仓储服务"],
+  "宁波赛蓝供应链服务有限公司": ["起运港操作", "订舱服务", "干线海运", "清关服务"],
 };
 
 function normalizeProviderName(value: string) {
-  if (providerFeeItemOptions[value]) {
+  if (providerServiceTypeOptions[value]) {
     return value;
   }
   if (value.includes("义乌") || value.includes("双捷")) {
@@ -129,67 +148,69 @@ function normalizeProviderName(value: string) {
   return value;
 }
 
-const serviceLinkOptions = ["国内揽收", "干线运输", "清关", "尾程派送"];
+const defaultServiceTypeOptions = ["国内揽收", "干线运输", "清关服务", "尾程派送"];
 
-function parseFeeItemsFromSegment(segment?: string) {
-  return segment?.split("、").map((item) => item.split("-")[0]).filter(Boolean) ?? [];
-}
-
-function buildSchemesFromLegacy(
+function buildProvidersFromLegacy(
   partners: string[],
-  feeSegments: string[],
-  schemeCount = 1,
-): TransportScheme[] {
+  _feeSegments: string[],
+  legacySchemeCount = 1,
+): SchemeProviderRow[] {
   const normalizedPartners = partners.map((partner) => normalizeProviderName(partner));
-  if (schemeCount <= 1) {
-    return [
-      {
-        id: "scheme-1",
-        schemeName: "方案1",
-        providers: normalizedPartners.map((partner, index) => ({
-          id: `scheme-1-provider-${index + 1}`,
-          partner,
-          serviceLinks: serviceLinkOptions[index]
-            ? [serviceLinkOptions[index]]
-            : [serviceLinkOptions[serviceLinkOptions.length - 1]],
-          feeItems: parseFeeItemsFromSegment(feeSegments[index]),
-          remark: "",
-        })),
-      },
-    ];
-  }
-
-  return [
-    {
-      id: "scheme-1",
-      schemeName: "方案1",
-      providers: normalizedPartners.slice(0, 2).map((partner, index) => ({
-        id: `scheme-1-provider-${index + 1}`,
-        partner,
-        serviceLinks: serviceLinkOptions[index] ? [serviceLinkOptions[index]] : [],
-        feeItems: parseFeeItemsFromSegment(feeSegments[index]),
-        remark: "",
-      })),
-    },
-    {
-      id: "scheme-2",
-      schemeName: "方案2",
-      providers: [normalizedPartners[1], normalizedPartners[2] ?? normalizedPartners[0]]
-        .filter(Boolean)
-        .map((partner, index) => ({
-          id: `scheme-2-provider-${index + 1}`,
-          partner,
-          serviceLinks: serviceLinkOptions[index + 1] ? [serviceLinkOptions[index + 1]] : [],
-          feeItems: parseFeeItemsFromSegment(feeSegments[index + 1]),
-          remark: "",
-        })),
-    },
-  ];
+  const providers = legacySchemeCount > 1 ? normalizedPartners : normalizedPartners.slice(0, 1);
+  return providers.map((partner, index) => ({
+    id: `provider-${index + 1}`,
+    partner,
+    serviceTypes: [getProviderServiceTypes(partner)[index] ?? getProviderServiceTypes(partner)[0] ?? defaultServiceTypeOptions[0]],
+    relatedQuoteName: quoteNameOptions[index % quoteNameOptions.length]?.value ?? "",
+    remark: "",
+  }));
 }
 
-function getProviderFeeItems(partner: string) {
+function getProviderServiceTypes(partner: string) {
   const normalized = normalizeProviderName(partner);
-  return providerFeeItemOptions[normalized] ?? ["操作费", "运输费", "附加费"];
+  return providerServiceTypeOptions[normalized] ?? defaultServiceTypeOptions;
+}
+
+function getProviderModeLabel(mode: FirstLegProviderMode) {
+  return mode === "multi" ? "多物流商联运" : "单一物流商";
+}
+
+function emptyRange(): DateRangeValue {
+  return { start: "", end: "" };
+}
+
+function inDateRange(dateText: string, range: DateRangeValue) {
+  const date = dateText.slice(0, 10);
+  if (range.start && date < range.start) {
+    return false;
+  }
+  if (range.end && date > range.end) {
+    return false;
+  }
+  return true;
+}
+
+function matchesQuoteDestination(quoteDestination: string, routeLine: string) {
+  if (!routeLine) {
+    return true;
+  }
+  const routeCountry = routeLine.split("-")[0];
+  return quoteDestination.includes(routeCountry) || routeLine.includes(quoteDestination);
+}
+
+function getQuoteOptionsByProviderAndScope(provider: string, routeLine: string, serviceScope: QuoteServiceScope) {
+  const normalizedProvider = normalizeProviderName(provider);
+  const matchedQuotes = logisticsQuoteRecords.filter(
+    (record) =>
+      record.serviceScope === serviceScope &&
+      normalizeProviderName(record.logisticsProvider) === normalizedProvider &&
+      matchesQuoteDestination(record.destination, routeLine),
+  );
+  const fallbackQuotes = logisticsQuoteRecords.filter(
+    (record) => record.serviceScope === serviceScope && normalizeProviderName(record.logisticsProvider) === normalizedProvider,
+  );
+  const quotes = matchedQuotes.length ? matchedQuotes : fallbackQuotes;
+  return quotes.map((record) => ({ label: record.quoteName, value: record.quoteName }));
 }
 
 const logisticsChannelRecords: LogisticsChannelRecord[] = [
@@ -203,7 +224,8 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     agingDays: 66,
     volumeFactor: "6000",
     remark: "谷仓海外仓标准渠道",
-    transportSchemes: buildSchemesFromLegacy(
+    firstLegProviderMode: "single",
+    providers: buildProvidersFromLegacy(
       ["深圳以达", "美西卡车派送", "USPS尾程"],
       ["国内揽收费-深圳以达", "美西卡派费-美西卡车派送", "尾程派送费-USPS尾程"],
     ),
@@ -223,7 +245,8 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     agingDays: 21,
     volumeFactor: "6000",
     remark: "美南海运标快",
-    transportSchemes: buildSchemesFromLegacy(
+    firstLegProviderMode: "single",
+    providers: buildProvidersFromLegacy(
       ["义乌双捷", "美森快船", "FedEx尾程"],
       ["国内操作费-义乌双捷", "干线海运费-美森快船", "尾程派送费-FedEx尾程"],
     ),
@@ -243,7 +266,8 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     agingDays: 222,
     volumeFactor: "5000",
     remark: "宁波赛蓝海运渠道",
-    transportSchemes: buildSchemesFromLegacy(
+    firstLegProviderMode: "single",
+    providers: buildProvidersFromLegacy(
       ["宁波赛蓝", "Matson", "海外仓卡派"],
       ["起运港操作费-宁波赛蓝", "干线运费-Matson", "海外仓卡派费-海外仓卡派"],
     ),
@@ -262,8 +286,9 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     routeLine: "美国-加州洛杉矶-希尔顿、美国-纽约",
     agingDays: 21,
     volumeFactor: "6000",
-    remark: "多段联运渠道，含两套运输方案",
-    transportSchemes: buildSchemesFromLegacy(
+    remark: "多段联运渠道，含多物流商联运",
+    firstLegProviderMode: "multi",
+    providers: buildProvidersFromLegacy(
       ["义乌双捷", "美西港口服务商", "UPS尾程"],
       ["国内集货费-义乌双捷", "港口处理费-美西港口服务商", "尾程派送费-UPS尾程"],
       2,
@@ -284,7 +309,8 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     agingDays: 1,
     volumeFactor: "5000",
     remark: "加拿大本地配送",
-    transportSchemes: buildSchemesFromLegacy(
+    firstLegProviderMode: "single",
+    providers: buildProvidersFromLegacy(
       ["义乌双捷", "加拿大清关行", "本地卡派"],
       ["国内操作费-义乌双捷", "清关服务费-加拿大清关行", "本地配送费-本地卡派"],
     ),
@@ -304,7 +330,8 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     agingDays: 7,
     volumeFactor: "6000",
     remark: "DHL快递渠道",
-    transportSchemes: buildSchemesFromLegacy(
+    firstLegProviderMode: "single",
+    providers: buildProvidersFromLegacy(
       ["义乌双捷", "DHL Express"],
       ["国内揽收费-义乌双捷", "国际快递费-DHL Express"],
     ),
@@ -324,7 +351,8 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     agingDays: 8,
     volumeFactor: "6000",
     remark: "UPS特快渠道",
-    transportSchemes: buildSchemesFromLegacy(
+    firstLegProviderMode: "single",
+    providers: buildProvidersFromLegacy(
       ["浙江融盛", "UPS Express"],
       ["国内操作费-浙江融盛", "国际快递费-UPS Express"],
     ),
@@ -344,7 +372,8 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     agingDays: 8,
     volumeFactor: "6000",
     remark: "快递禁用渠道",
-    transportSchemes: buildSchemesFromLegacy(
+    firstLegProviderMode: "single",
+    providers: buildProvidersFromLegacy(
       ["义乌双捷", "FedEx", "USPS尾程"],
       ["国内集货费-义乌双捷", "干线快递费-FedEx", "尾程派送费-USPS尾程"],
     ),
@@ -455,7 +484,9 @@ function RouteSelector({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const { open, setOpen, toggle } = useExclusiveFilterPanel(panelId);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const [activeCountry, setActiveCountry] = useState(routeTree[0].country);
   const country = routeTree.find((item) => item.country === activeCountry) ?? routeTree[0];
   const [activeProvince, setActiveProvince] = useState(country.provinces[0].name);
@@ -469,15 +500,30 @@ function RouteSelector({
     onChange(next.join("、"));
   }
 
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [open, setOpen]);
+
   return (
-    <div className="group relative">
+    <div ref={rootRef} className="group relative">
       <button
         type="button"
         className="field-control flex w-full items-center justify-between gap-2 pr-10 text-left"
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggle}
       >
         <span className={value ? "min-w-0 flex-1 truncate text-text-primary" : "min-w-0 flex-1 truncate text-text-placeholder"}>
-          {value || "请选择区域路线"}
+          {value || "请选择目的地"}
         </span>
         <SelectChevron open={open} />
       </button>
@@ -548,7 +594,8 @@ function OptionMultiSelect({
   clearAriaLabel?: string;
   onChange: (value: string[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const { open, setOpen, toggle } = useExclusiveFilterPanel(panelId);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -643,7 +690,7 @@ function OptionMultiSelect({
         className={`field-control flex w-full items-center justify-between gap-2 pr-10 text-left ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
         onClick={() => {
           if (!disabled) {
-            setOpen((current) => !current);
+            toggle();
           }
         }}
       >
@@ -725,83 +772,92 @@ function LogisticsChannelForm({
   const [routeLine, setRouteLine] = useState(record?.routeLine ?? "");
   const [status, setStatus] = useState<LogisticsChannelStatus>(record?.status ?? "启用");
   const [remark, setRemark] = useState(record?.remark ?? "");
-  const [transportSchemes, setTransportSchemes] = useState<TransportScheme[]>(() =>
-    record?.transportSchemes?.length
-      ? cloneTransportSchemes(record.transportSchemes)
-      : [createTransportScheme(1)],
+  const [firstLegProviderMode, setFirstLegProviderMode] = useState<FirstLegProviderMode>(() =>
+    record?.firstLegProviderMode ?? ((record?.providers?.length ?? 0) > 1 ? "multi" : "single"),
   );
-  const [invalidSchemeIds, setInvalidSchemeIds] = useState<Set<string>>(() => new Set());
+  const [providers, setProviders] = useState<SchemeProviderRow[]>(() =>
+    record?.providers?.length ? cloneProviderRows(record.providers) : [createProviderRow("provider-1")],
+  );
+  const primaryProvider = providers[0] ?? createProviderRow("provider-1");
 
-  function updateSchemes(updater: (current: TransportScheme[]) => TransportScheme[]) {
-    setTransportSchemes((current) => {
+  function updateProviders(updater: (current: SchemeProviderRow[]) => SchemeProviderRow[]) {
+    setProviders((current) => {
       const next = updater(current);
       return next.length > 0 ? next : current;
     });
   }
 
-  function addScheme() {
-    updateSchemes((current) => [...current, createTransportScheme(current.length + 1)]);
+  function handleProviderModeChange(value: string) {
+    const nextMode = value as FirstLegProviderMode;
+    setFirstLegProviderMode(nextMode);
+    setProviders((current) => {
+      const safeProviders = current.length > 0 ? current : [createProviderRow("provider-1")];
+      return nextMode === "single" ? [safeProviders[0]] : safeProviders;
+    });
   }
 
-  function removeScheme(schemeId: string) {
-    updateSchemes((current) => (current.length <= 1 ? current : current.filter((scheme) => scheme.id !== schemeId)));
+  function addProvider() {
+    updateProviders((current) => [...current, createProviderRow()]);
   }
 
-  function addProvider(schemeId: string) {
-    updateSchemes((current) =>
-      current.map((scheme) =>
-        scheme.id === schemeId
-          ? { ...scheme, providers: [...scheme.providers, createProviderRow()] }
-          : scheme,
-      ),
+  function removeProvider(providerId: string) {
+    updateProviders((current) => (current.length <= 1 ? current : current.filter((provider) => provider.id !== providerId)));
+  }
+
+  function updateProvider(providerId: string, updater: (provider: SchemeProviderRow) => SchemeProviderRow) {
+    updateProviders((current) => current.map((provider) => (provider.id === providerId ? updater(provider) : provider)));
+  }
+
+  const singleQuoteOptions = getQuoteOptionsByProviderAndScope(primaryProvider.partner, routeLine, "全程运输");
+
+  function getAvailableProviderOptions(rowId: string) {
+    const selectedPartners = new Set(
+      providers.filter((provider) => provider.id !== rowId).map((provider) => provider.partner).filter(Boolean),
     );
-  }
-
-  function removeProvider(schemeId: string, providerId: string) {
-    updateSchemes((current) =>
-      current.map((scheme) => {
-        if (scheme.id !== schemeId || scheme.providers.length <= 1) {
-          return scheme;
-        }
-        return { ...scheme, providers: scheme.providers.filter((provider) => provider.id !== providerId) };
-      }),
-    );
-  }
-
-  function updateSchemeName(schemeId: string, schemeName: string) {
-    updateSchemes((current) =>
-      current.map((scheme) => (scheme.id === schemeId ? { ...scheme, schemeName } : scheme)),
-    );
-    if (schemeName.trim()) {
-      setInvalidSchemeIds((current) => {
-        if (!current.has(schemeId)) {
-          return current;
-        }
-        const next = new Set(current);
-        next.delete(schemeId);
-        return next;
-      });
-    }
+    return providerOptions.filter((option) => !selectedPartners.has(option.value));
   }
 
   function handleSubmit() {
-    const emptySchemes = transportSchemes.filter((scheme) => !scheme.schemeName.trim());
-    if (emptySchemes.length > 0) {
-      setInvalidSchemeIds(new Set(emptySchemes.map((scheme) => scheme.id)));
-      window.alert("请填写方案名称");
-      return;
-    }
-    setInvalidSchemeIds(new Set());
     onSubmit();
   }
 
   return (
     <div className="space-y-4 pb-16">
+      <ExclusiveFilterGroup>
       <Card>
         <SectionTitle>基本信息</SectionTitle>
-        <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="mt-4 grid items-start gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           <FormRow label="物流渠道" required>
             <Input value={channelName} placeholder="请输入物流渠道" maxLength={50} onChange={(event) => setChannelName(event.target.value)} />
+          </FormRow>
+          <FormRow label="头程物流商模式" required>
+            <Select
+              value={firstLegProviderMode}
+              options={firstLegProviderModeOptions}
+              clearable={false}
+              onValueChange={handleProviderModeChange}
+            />
+          </FormRow>
+          {firstLegProviderMode === "single" ? (
+            <FormRow label="物流商" required>
+              <Select
+                value={primaryProvider.partner}
+                placeholder="请选择物流商"
+                options={providerOptions}
+                onValueChange={(value) =>
+                  updateProviders((current) => {
+                    const [firstProvider] = current.length > 0 ? current : [createProviderRow("provider-1")];
+                    return [{ ...firstProvider, partner: value, serviceTypes: [] }];
+                  })
+                }
+              />
+            </FormRow>
+          ) : null}
+          <FormRow label="目的地" required>
+            <RouteSelector value={routeLine} onChange={setRouteLine} />
+          </FormRow>
+          <FormRow label="运输方式" required>
+            <Select value={transportMode} placeholder="请选择运输方式" options={transportModeOptions.filter((item) => item.value !== "all")} onValueChange={setTransportMode} />
           </FormRow>
           <FormRow label="物流周期" required>
             <div className="flex">
@@ -809,200 +865,119 @@ function LogisticsChannelForm({
               <span className="inline-flex h-input-md items-center border border-l-0 border-border bg-bg-page px-3 text-text-secondary">天</span>
             </div>
           </FormRow>
-          <FormRow label="运输方式" required>
-            <Select value={transportMode} placeholder="请选择运输方式" options={transportModeOptions.filter((item) => item.value !== "all")} onValueChange={setTransportMode} />
-          </FormRow>
-          <FormRow label="区域路线" required>
-            <RouteSelector value={routeLine} onChange={setRouteLine} />
-          </FormRow>
+          {firstLegProviderMode === "single" ? (
+            <FormRow label="关联报价" required>
+              <Select
+                value={primaryProvider.relatedQuoteName}
+                placeholder={singleQuoteOptions.length ? "请选择关联报价" : "暂无匹配全程运输报价"}
+                options={singleQuoteOptions}
+                onValueChange={(value) =>
+                  updateProviders((current) => {
+                    const [firstProvider] = current.length > 0 ? current : [createProviderRow("provider-1")];
+                    return [{ ...firstProvider, relatedQuoteName: value }];
+                  })
+                }
+              />
+            </FormRow>
+          ) : null}
           <FormRow label="状态" required>
             <Select value={status} options={channelStatusOptions} onValueChange={(value) => setStatus(value as LogisticsChannelStatus)} />
           </FormRow>
-          <FormRow label="材积参数" required>
-            <Input defaultValue={record?.volumeFactor} placeholder="请输入材积参数" />
+          <FormRow label="积材参数" required>
+            <Input defaultValue={record?.volumeFactor} placeholder="请输入积材参数" />
           </FormRow>
-          <FormRow label="备注" className="xl:col-span-2 items-start">
+          <FormRow label="备注" className="sm:col-span-2 sm:col-start-1 xl:col-span-2 2xl:col-span-2 !items-start sm:!items-start">
             <Textarea className="min-h-[72px]" maxLength={1000} value={remark} placeholder="请输入备注" onChange={(event) => setRemark(event.target.value)} />
           </FormRow>
         </div>
       </Card>
 
-      <Card>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <SectionTitle>运输方案</SectionTitle>
-          <Button variant="primary" size="sm" className="self-start sm:self-auto" onClick={addScheme}>
-            添加方案
-          </Button>
-        </div>
-        <div className="mt-4 space-y-6">
-          {transportSchemes.map((scheme) => (
-            <div key={scheme.id} className="rounded-lg border border-border">
-              <div className="flex flex-col gap-3 border-b border-border bg-bg-page px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
-                <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                  <span className="shrink-0 text-small text-text-secondary sm:w-[72px] sm:text-right">
-                    <span className="mr-1 text-danger">*</span>
-                    方案名称
-                  </span>
-                  <div className="min-w-0 flex-1 sm:max-w-[280px]">
-                    <Input
-                      className={cn(
-                        invalidSchemeIds.has(scheme.id) && "border-danger focus:border-danger focus:ring-danger-subtle",
-                      )}
-                      value={scheme.schemeName}
-                      placeholder="请输入方案名称"
-                      maxLength={50}
-                      onChange={(event) => updateSchemeName(scheme.id, event.target.value)}
-                    />
-                    {invalidSchemeIds.has(scheme.id) ? (
-                      <div className="mt-1 text-mini text-danger">请填写方案名称</div>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                  <Button variant="secondary" size="sm" onClick={() => addProvider(scheme.id)}>
-                    添加物流商
-                  </Button>
-                  <button
-                    type="button"
-                    className="border-0 bg-transparent p-0 text-small text-primary hover:underline disabled:text-text-placeholder disabled:no-underline"
-                    disabled={transportSchemes.length <= 1}
-                    onClick={() => removeScheme(scheme.id)}
-                  >
-                    移除方案
-                  </button>
-                </div>
-              </div>
-              <div className="-mx-px overflow-x-auto">
-                <table className="w-full min-w-[920px] table-fixed border-collapse text-left text-small">
-                  <colgroup>
-                    <col className="w-14" />
-                    <col className="w-[22%]" />
-                    <col className="w-[18%]" />
-                    <col className="w-[22%]" />
-                    <col className="w-[24%]" />
-                    <col className="w-16" />
-                  </colgroup>
-                  <thead className="bg-bg-page text-text-muted">
-                    <tr>
-                      <th className={schemeTableHeadCell}>序号</th>
-                      <th className={schemeTableHeadCell}>物流商</th>
-                      <th className={schemeTableHeadCell}>服务环节</th>
-                      <th className={schemeTableHeadCell}>费用项</th>
-                      <th className={schemeTableHeadCell}>备注</th>
-                      <th className={schemeTableHeadCell}>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border bg-white">
-                    {scheme.providers.map((row, index) => (
-                      <tr key={row.id}>
-                        <td className={schemeTableCell}>{index + 1}</td>
-                        <td className={schemeTableCell}>
-                          <Select
-                            value={row.partner}
-                            placeholder="请选择物流商"
-                            options={providerOptions}
-                            onValueChange={(value) =>
-                              updateSchemes((current) =>
-                                current.map((item) =>
-                                  item.id === scheme.id
-                                    ? {
-                                        ...item,
-                                        providers: item.providers.map((provider) =>
-                                          provider.id === row.id
-                                            ? { ...provider, partner: value, feeItems: [] }
-                                            : provider,
-                                        ),
-                                      }
-                                    : item,
-                                ),
-                              )
-                            }
-                          />
-                        </td>
-                        <td className={schemeTableCell}>
-                          <OptionMultiSelect
-                            value={row.serviceLinks}
-                            placeholder="请选择服务环节"
-                            clearAriaLabel="清空服务环节"
-                            options={serviceLinkOptions}
-                            onChange={(value) =>
-                              updateSchemes((current) =>
-                                current.map((item) =>
-                                  item.id === scheme.id
-                                    ? {
-                                        ...item,
-                                        providers: item.providers.map((provider) =>
-                                          provider.id === row.id ? { ...provider, serviceLinks: value } : provider,
-                                        ),
-                                      }
-                                    : item,
-                                ),
-                              )
-                            }
-                          />
-                        </td>
-                        <td className={schemeTableCell}>
-                          <OptionMultiSelect
-                            value={row.feeItems}
-                            disabled={!row.partner}
-                            placeholder="请选择费用项"
-                            clearAriaLabel="清空费用项"
-                            options={getProviderFeeItems(row.partner)}
-                            onChange={(value) =>
-                              updateSchemes((current) =>
-                                current.map((item) =>
-                                  item.id === scheme.id
-                                    ? {
-                                        ...item,
-                                        providers: item.providers.map((provider) =>
-                                          provider.id === row.id ? { ...provider, feeItems: value } : provider,
-                                        ),
-                                      }
-                                    : item,
-                                ),
-                              )
-                            }
-                          />
-                        </td>
-                        <td className={schemeTableCell}>
-                          <Input
-                            value={row.remark}
-                            placeholder="请输入备注"
-                            onChange={(event) =>
-                              updateSchemes((current) =>
-                                current.map((item) =>
-                                  item.id === scheme.id
-                                    ? {
-                                        ...item,
-                                        providers: item.providers.map((provider) =>
-                                          provider.id === row.id ? { ...provider, remark: event.target.value } : provider,
-                                        ),
-                                      }
-                                    : item,
-                                ),
-                              )
-                            }
-                          />
-                        </td>
-                        <td className={schemeTableCell}>
-                          <button
-                            type="button"
-                            className="border-0 bg-transparent p-0 text-primary hover:underline disabled:text-text-placeholder disabled:no-underline"
-                            disabled={scheme.providers.length <= 1}
-                            onClick={() => removeProvider(scheme.id, row.id)}
-                          >
-                            移除
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
+      {firstLegProviderMode === "multi" ? (
+        <Card>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <SectionTitle>联运物流商</SectionTitle>
+            <Button variant="primary" size="sm" className="self-start sm:self-auto" onClick={addProvider}>
+              添加物流商
+            </Button>
+          </div>
+          <div className="mt-4 -mx-px overflow-x-auto">
+            <table className="w-full min-w-[920px] table-fixed border-collapse text-left text-small">
+              <colgroup>
+                <col className="w-14" />
+                <col className="w-[24%]" />
+                <col className="w-[22%]" />
+                <col className="w-[24%]" />
+                <col className="w-[24%]" />
+                <col className="w-16" />
+              </colgroup>
+              <thead className="bg-bg-page text-text-muted">
+                <tr>
+                  <th className={schemeTableHeadCell}>序号</th>
+                  <th className={schemeTableHeadCell}>物流商</th>
+                  <th className={schemeTableHeadCell}>服务类型</th>
+                  <th className={schemeTableHeadCell}>关联报价</th>
+                  <th className={schemeTableHeadCell}>备注</th>
+                  <th className={schemeTableHeadCell}>操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border bg-white">
+                {providers.map((row, index) => (
+                  <tr key={row.id}>
+                    <td className={schemeTableCell}>{index + 1}</td>
+                    <td className={schemeTableCell}>
+                      <Select
+                        value={row.partner}
+                        placeholder="请选择物流商"
+                        options={getAvailableProviderOptions(row.id)}
+                        onValueChange={(value) =>
+                          updateProvider(row.id, (provider) => ({ ...provider, partner: value, serviceTypes: [] }))
+                        }
+                      />
+                    </td>
+                    <td className={schemeTableCell}>
+                      <OptionMultiSelect
+                        value={row.serviceTypes}
+                        disabled={!row.partner}
+                        placeholder="请选择服务类型"
+                        clearAriaLabel="清空服务类型"
+                        options={getProviderServiceTypes(row.partner)}
+                        onChange={(value) => updateProvider(row.id, (provider) => ({ ...provider, serviceTypes: value }))}
+                      />
+                    </td>
+                    <td className={schemeTableCell}>
+                      <Select
+                        value={row.relatedQuoteName}
+                        placeholder={row.partner ? "请选择关联报价" : "请先选择物流商"}
+                        options={getQuoteOptionsByProviderAndScope(row.partner, routeLine, "分段运输")}
+                        onValueChange={(value) => updateProvider(row.id, (provider) => ({ ...provider, relatedQuoteName: value }))}
+                      />
+                    </td>
+                    <td className={schemeTableCell}>
+                      <Input
+                        value={row.remark}
+                        placeholder="请输入备注"
+                        maxLength={500}
+                        onChange={(event) => updateProvider(row.id, (provider) => ({ ...provider, remark: event.target.value }))}
+                      />
+                    </td>
+                    <td className={schemeTableCell}>
+                      <button
+                        type="button"
+                        className="border-0 bg-transparent p-0 text-primary hover:underline disabled:text-text-placeholder disabled:no-underline"
+                        disabled={providers.length <= 1}
+                        onClick={() => removeProvider(row.id)}
+                      >
+                        移除
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
+      </ExclusiveFilterGroup>
 
       <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap justify-center gap-3 border-t border-border bg-white px-4 py-3 shadow-lg sm:px-6">
         <Button variant="secondary" size="sm" onClick={onBack}>取消</Button>
@@ -1037,65 +1012,66 @@ function LogisticsChannelDetail({
         <div className="mt-4">
           <SectionTitle>基本信息</SectionTitle>
           <div className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            <InfoItem label="物流渠道ID" value={record.channelId} />
             <InfoItem label="物流渠道" value={record.providerChannelName} />
+            <InfoItem label="渠道ID" value={record.channelId} />
+            <InfoItem
+              label="头程物流商模式"
+              value={getProviderModeLabel(record.firstLegProviderMode)}
+            />
+            {record.firstLegProviderMode === "single" ? (
+              <InfoItem label="物流商" value={record.providers[0]?.partner ?? ""} />
+            ) : null}
+            <InfoItem label="目的地" value={record.routeLine} />
             <InfoItem label="运输方式" value={record.transportMode} />
-            <InfoItem label="区域路线" value={record.routeLine} />
             <InfoItem label="物流周期" value={`${record.agingDays}天`} />
-            <InfoItem label="材积参数" value={record.volumeFactor} />
+            {record.firstLegProviderMode === "single" ? (
+              <InfoItem label="关联报价" value={record.providers[0]?.relatedQuoteName ?? ""} />
+            ) : null}
             <InfoItem label="状态" value={record.status} />
+            <InfoItem label="积材参数" value={record.volumeFactor} />
             <InfoItem label="备注" value={record.remark} />
           </div>
         </div>
       </Card>
 
-      <Card>
-        <SectionTitle>运输方案</SectionTitle>
-        <div className="mt-4 space-y-6">
-          {record.transportSchemes.map((scheme) => (
-            <div key={scheme.id} className="rounded-lg border border-border">
-              <div className="border-b border-border bg-bg-page px-3 py-3 font-medium text-text-primary sm:px-4">
-                {scheme.schemeName || "-"}
-              </div>
-              <div className="-mx-px overflow-x-auto">
-                <table className="w-full min-w-[760px] table-fixed border-collapse text-left text-small">
-                  <colgroup>
-                    <col className="w-14" />
-                    <col className="w-[26%]" />
-                    <col className="w-[22%]" />
-                    <col className="w-[26%]" />
-                    <col className="w-[26%]" />
-                  </colgroup>
-                  <thead className="bg-bg-page text-text-muted">
-                    <tr>
-                      <th className={schemeTableHeadCell}>序号</th>
-                      <th className={schemeTableHeadCell}>物流商</th>
-                      <th className={schemeTableHeadCell}>服务环节</th>
-                      <th className={schemeTableHeadCell}>费用项</th>
-                      <th className={schemeTableHeadCell}>备注</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border bg-white">
-                    {scheme.providers.map((provider, index) => (
-                      <tr key={provider.id}>
-                        <td className={schemeTableCell}>{index + 1}</td>
-                        <td className={cn(schemeTableCell, "break-words")}>{provider.partner || "-"}</td>
-                        <td className={cn(schemeTableCell, "break-words")}>
-                          {provider.serviceLinks.length ? provider.serviceLinks.join("、") : "-"}
-                        </td>
-                        <td className={cn(schemeTableCell, "break-words")}>
-                          {provider.feeItems.length ? provider.feeItems.join("、") : "-"}
-                        </td>
-                        <td className={cn(schemeTableCell, "break-words")}>{provider.remark || "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
+      {record.firstLegProviderMode === "multi" ? (
+        <Card>
+          <SectionTitle>联运物流商</SectionTitle>
+          <div className="mt-4 -mx-px overflow-x-auto">
+            <table className="w-full min-w-[760px] table-fixed border-collapse text-left text-small">
+              <colgroup>
+                <col className="w-14" />
+                <col className="w-[26%]" />
+                <col className="w-[22%]" />
+                <col className="w-[26%]" />
+                <col className="w-[26%]" />
+              </colgroup>
+              <thead className="bg-bg-page text-text-muted">
+                <tr>
+                  <th className={schemeTableHeadCell}>序号</th>
+                  <th className={schemeTableHeadCell}>物流商</th>
+                  <th className={schemeTableHeadCell}>服务类型</th>
+                  <th className={schemeTableHeadCell}>关联报价</th>
+                  <th className={schemeTableHeadCell}>备注</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border bg-white">
+                {record.providers.map((provider, index) => (
+                  <tr key={provider.id}>
+                    <td className={schemeTableCell}>{index + 1}</td>
+                    <td className={cn(schemeTableCell, "break-words")}>{provider.partner || "-"}</td>
+                    <td className={cn(schemeTableCell, "break-words")}>
+                      {provider.serviceTypes.length ? provider.serviceTypes.join("、") : "-"}
+                    </td>
+                    <td className={cn(schemeTableCell, "break-words")}>{provider.relatedQuoteName || "-"}</td>
+                    <td className={cn(schemeTableCell, "break-words")}>{provider.remark || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
 
     </div>
   );
@@ -1120,9 +1096,11 @@ export function LogisticsChannelPage({
   const [activeRecordId, setActiveRecordId] = useState(logisticsChannelRecords[0]?.id ?? "");
   const [channelName, setChannelName] = useState("all");
   const [channelId, setChannelId] = useState("all");
+  const [providerModeFilter, setProviderModeFilter] = useState("all");
   const [transportMode, setTransportMode] = useState("all");
   const [routeLine, setRouteLine] = useState("all");
-  const [logisticsCycle, setLogisticsCycle] = useState("all");
+  const [timeType, setTimeType] = useState("created");
+  const [timeRange, setTimeRange] = useState<DateRangeValue>(emptyRange());
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -1131,37 +1109,35 @@ export function LogisticsChannelPage({
     [],
   );
   const channelIdOptions = useMemo(
-    () => buildOptions(logisticsChannelRecords.map((record) => record.channelId), "全部物流渠道ID"),
+    () => buildOptions(logisticsChannelRecords.map((record) => record.channelId), "全部渠道ID"),
     [],
   );
   const routeLineOptions = useMemo(
-    () => buildOptions(logisticsChannelRecords.map((record) => record.routeLine), "全部区域路线"),
+    () => buildOptions(logisticsChannelRecords.map((record) => record.routeLine), "全部目的地"),
     [],
   );
-  const logisticsCycleOptions = useMemo(
-    () => buildOptions(logisticsChannelRecords.map((record) => `${record.agingDays}天`), "全部物流周期"),
-    [],
-  );
-
   const filteredRecords = useMemo(() => {
     return logisticsChannelRecords.filter((record) => {
       const matchesChannelName = channelName === "all" || record.providerChannelName === channelName;
       const matchesChannelId = channelId === "all" || record.channelId === channelId;
+      const matchesProviderMode = providerModeFilter === "all" || record.firstLegProviderMode === providerModeFilter;
       const matchesTransport = transportMode === "all" || record.transportMode === transportMode;
       const matchesRouteLine = routeLine === "all" || record.routeLine === routeLine;
-      const matchesLogisticsCycle = logisticsCycle === "all" || `${record.agingDays}天` === logisticsCycle;
+      const timeValue = timeType === "updated" ? record.updatedAt : record.createdAt;
+      const matchesTime = inDateRange(timeValue, timeRange);
       const matchesStatus = status === "all" || record.status === status;
 
       return (
         matchesChannelName &&
         matchesChannelId &&
+        matchesProviderMode &&
         matchesTransport &&
         matchesRouteLine &&
-        matchesLogisticsCycle &&
+        matchesTime &&
         matchesStatus
       );
     });
-  }, [channelId, channelName, logisticsCycle, routeLine, status, transportMode]);
+  }, [channelId, channelName, providerModeFilter, routeLine, status, timeRange, timeType, transportMode]);
 
   const totalPages = Math.max(Math.ceil(filteredRecords.length / pageSize), 1);
   const safePage = Math.min(page, totalPages);
@@ -1190,9 +1166,11 @@ export function LogisticsChannelPage({
   function resetFilters() {
     setChannelName("all");
     setChannelId("all");
+    setProviderModeFilter("all");
     setTransportMode("all");
     setRouteLine("all");
-    setLogisticsCycle("all");
+    setTimeType("created");
+    setTimeRange(emptyRange());
     setStatus("all");
     setPage(1);
   }
@@ -1271,8 +1249,8 @@ export function LogisticsChannelPage({
             setChannelId(value);
             setPage(1);
           }} />
-          <Select className="w-[160px]" options={statusOptions} value={status} onValueChange={(value) => {
-            setStatus(value);
+          <Select className="w-[180px]" options={firstLegProviderModeFilterOptions} value={providerModeFilter} onValueChange={(value) => {
+            setProviderModeFilter(value);
             setPage(1);
           }} />
           <Select className="w-[160px]" options={transportModeOptions} value={transportMode} onValueChange={(value) => {
@@ -1283,8 +1261,21 @@ export function LogisticsChannelPage({
             setRouteLine(value);
             setPage(1);
           }} />
-          <Select className="w-[180px]" options={logisticsCycleOptions} value={logisticsCycle} onValueChange={(value) => {
-            setLogisticsCycle(value);
+          <Select
+            className="w-[128px]"
+            value={timeType}
+            onValueChange={setTimeType}
+            options={[
+              { label: "创建时间", value: "created" },
+              { label: "更新时间", value: "updated" },
+            ]}
+          />
+          <DateRangePicker value={timeRange} onChange={(value) => {
+            setTimeRange(value);
+            setPage(1);
+          }} />
+          <Select className="w-[160px]" options={statusOptions} value={status} onValueChange={(value) => {
+            setStatus(value);
             setPage(1);
           }} />
           <Button variant="primary" size="sm">查询</Button>
@@ -1314,17 +1305,18 @@ export function LogisticsChannelPage({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1280px] border-collapse text-left text-small">
+          <table className="w-full min-w-[1360px] border-collapse text-left text-small">
             <thead className="bg-bg-page text-text-muted">
               <tr>
                 <th className={tableHeadCell}>物流渠道</th>
-                <th className={tableHeadCell}>物流渠道ID</th>
+                <th className={tableHeadCell}>渠道ID</th>
+                <th className={tableHeadCell}>头程物流商模式</th>
                 <th className={tableHeadCell}>运输方式</th>
-                <th className={tableHeadCell}>区域路线</th>
+                <th className={tableHeadCell}>目的地</th>
                 <th className={tableHeadCell}>物流周期</th>
+                <th className={tableHeadCell}>状态</th>
                 <th className={tableHeadCell}>创建人/创建时间</th>
                 <th className={tableHeadCell}>更新人/更新时间</th>
-                <th className={tableHeadCell}>状态</th>
                 <th className={tableHeadCell}>操作</th>
               </tr>
             </thead>
@@ -1333,9 +1325,11 @@ export function LogisticsChannelPage({
                 <tr key={record.id}>
                   <td className="whitespace-nowrap px-3 py-3">{record.providerChannelName}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.channelId}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{getProviderModeLabel(record.firstLegProviderMode)}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.transportMode}</td>
                   <td className="max-w-[260px] truncate px-3 py-3" title={record.routeLine}>{record.routeLine}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.agingDays}天</td>
+                  <td className="whitespace-nowrap px-3 py-3">{record.status}</td>
                   <td className="whitespace-nowrap px-3 py-3">
                     <div>{record.createdBy}</div>
                     <div className="text-text-muted">{record.createdAt}</div>
@@ -1344,7 +1338,6 @@ export function LogisticsChannelPage({
                     <div>{record.updatedBy}</div>
                     <div className="text-text-muted">{record.updatedAt}</div>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3">{record.status}</td>
                   <td className="whitespace-nowrap px-3 py-3">
                     <button type="button" className="mr-2 border-0 bg-transparent p-0 text-primary hover:underline" onClick={() => openDetail(record)}>
                       详情

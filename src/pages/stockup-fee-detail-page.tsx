@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -10,13 +9,11 @@ import {
   feeCurrencyOptions,
   feeCurrencySelectClassName,
   feeCurrencySelectMenuMinWidth,
-  formatFeeCurrencyTotals,
+  feeCurrencyToCnyRate,
   getProviderCurrency,
   getProviderFeeTypes,
   getProviderServiceLinks,
-  getSchemeServiceLinkOptions,
   getTransportSchemesByChannel,
-  logisticsChannelOptions,
   type ChannelTransportScheme,
   type FeeDetailRow,
 } from "../data/logistics-transport-schemes";
@@ -24,57 +21,22 @@ import {
 const tableHeadCell = "whitespace-nowrap px-3 py-3 font-medium";
 const feeCurrencySelectOptions = feeCurrencyOptions.map((value) => ({ label: value, value }));
 
-function ServiceLinkMultiSelect({
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  value: string[];
-  options: string[];
-  disabled?: boolean;
-  onChange: (value: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const label = value.length === 0 ? "请选择服务环节" : value.join("、");
+function parseFeeAmount(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
-  return (
-    <div className="relative min-w-0">
-      <button
-        type="button"
-        disabled={disabled}
-        className="field-control flex w-full min-w-0 items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:bg-bg-subtle disabled:text-text-disabled"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className={`min-w-0 flex-1 truncate ${value.length ? "text-text-primary" : "text-text-placeholder"}`}>
-          {label}
-        </span>
-        <ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 text-text-muted ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open ? (
-        <>
-          <button type="button" className="fixed inset-0 z-20 cursor-default border-0 bg-transparent p-0" aria-label="关闭服务环节选择" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-[220px] w-full min-w-[200px] overflow-auto rounded-sm border border-border bg-white p-2 shadow-md">
-            {options.map((option) => {
-              const checked = value.includes(option);
-              return (
-                <label key={option} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-small hover:bg-bg-hover">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() =>
-                      onChange(checked ? value.filter((item) => item !== option) : [...value, option])
-                    }
-                  />
-                  <span className="truncate">{option}</span>
-                </label>
-              );
-            })}
-          </div>
-        </>
-      ) : null}
-    </div>
-  );
+function formatFeeCnyTotal(
+  rows: FeeDetailRow[],
+  amountField: "estimatedAmount" | "actualAmount",
+  currencyField: "estimatedCurrency" | "actualCurrency",
+) {
+  const total = rows.reduce((sum, row) => {
+    const currency = row[currencyField] || "CNY";
+    return sum + parseFeeAmount(row[amountField]) * (feeCurrencyToCnyRate[currency] ?? 1);
+  }, 0);
+
+  return `${total.toFixed(2)} CNY`;
 }
 
 function ReadonlyCell({ value }: { value: string }) {
@@ -105,7 +67,6 @@ export function StockupFeeDetailSection() {
     () => (activeScheme?.providers ?? []).map((item) => ({ label: item.provider, value: item.provider })),
     [activeScheme],
   );
-  const serviceLinkSelectOptions = useMemo(() => getSchemeServiceLinkOptions(activeScheme), [activeScheme]);
 
   useEffect(() => {
     const firstScheme = transportSchemes[0];
@@ -149,38 +110,20 @@ export function StockupFeeDetailSection() {
     setFeeRows((current) => current.filter((row) => row.id !== rowId || !row.isCustom));
   }
 
+  function copyEstimatedToActual() {
+    setFeeRows((current) =>
+      current.map((row) => ({
+        ...row,
+        actualAmount: row.estimatedAmount,
+        actualCurrency: row.estimatedCurrency,
+      })),
+    );
+  }
+
   return (
     <Card>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="grid min-w-0 flex-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <div className="min-w-0 space-y-1.5">
-            <div className="text-small text-text-secondary">
-              <span className="mr-1 text-danger">*</span>
-              物流渠道
-            </div>
-            <Select value={channel} options={logisticsChannelOptions} clearable={false} onValueChange={setChannel} />
-          </div>
-          <div className="min-w-0 space-y-1.5">
-            <div className="text-small text-text-secondary">
-              <span className="mr-1 text-danger">*</span>
-              运输方案
-            </div>
-            <Select
-              value={schemeId || activeScheme?.id || ""}
-              placeholder={transportSchemes.length ? "请选择运输方案" : "当前渠道暂无运输方案"}
-              options={schemeOptions}
-              clearable={false}
-              disabled={transportSchemes.length === 0}
-              onValueChange={handleSchemeChange}
-            />
-          </div>
-          <div className="flex min-w-0 items-end sm:col-span-2 xl:col-span-1">
-            <p className="text-small leading-6 text-text-muted">
-              选定方案后自动带出物流商、服务环节与费用类型；系统行币种随报价方案中的物流商带出且不可修改，仅可维护费用金额。
-            </p>
-          </div>
-        </div>
-        <Button variant="primary" size="sm" className="shrink-0" onClick={addFeeRow} disabled={!activeScheme}>
+      <div className="flex justify-end">
+        <Button variant="primary" size="sm" onClick={addFeeRow} disabled={!activeScheme}>
           新增
         </Button>
       </div>
@@ -195,24 +138,35 @@ export function StockupFeeDetailSection() {
         </div>
       ) : (
         <div className="mt-4 -mx-px overflow-x-auto">
-          <table className="w-full min-w-[1120px] table-fixed border-collapse text-left text-small">
+          <table className="w-full min-w-[960px] table-fixed border-collapse text-left text-small">
             <colgroup>
               <col className="w-14" />
-              <col className="w-[20%]" />
-              <col className="w-[16%]" />
-              <col className="w-[14%]" />
+              <col className="w-[24%]" />
               <col className="w-[18%]" />
-              <col className="w-[18%]" />
+              <col className="w-[24%]" />
+              <col className="w-[24%]" />
               <col className="w-16" />
             </colgroup>
             <thead className="bg-bg-page text-text-muted">
               <tr>
                 <th className={tableHeadCell}>序号</th>
                 <th className={tableHeadCell}>物流商</th>
-                <th className={tableHeadCell}>服务环节</th>
                 <th className={tableHeadCell}>费用类型</th>
                 <th className={tableHeadCell}>预估费用</th>
-                <th className={tableHeadCell}>实际费用</th>
+                <th className={tableHeadCell}>
+                  <div className="flex items-center gap-2">
+                    <span>实际费用</span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-6 shrink-0 px-2 text-mini"
+                      disabled={feeRows.length === 0}
+                      onClick={copyEstimatedToActual}
+                    >
+                      引用预估
+                    </Button>
+                  </div>
+                </th>
                 <th className={tableHeadCell}>操作</th>
               </tr>
             </thead>
@@ -245,17 +199,6 @@ export function StockupFeeDetailSection() {
                         />
                       ) : (
                         <ReadonlyCell value={row.provider} />
-                      )}
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      {row.isCustom ? (
-                        <ServiceLinkMultiSelect
-                          value={row.serviceLinks}
-                          options={serviceLinkSelectOptions}
-                          onChange={(value) => updateRow(row.id, { serviceLinks: value })}
-                        />
-                      ) : (
-                        <ReadonlyCell value={row.serviceLinks.join("、")} />
                       )}
                     </td>
                     <td className="px-3 py-3 align-top">
@@ -330,14 +273,14 @@ export function StockupFeeDetailSection() {
                 );
               })}
               <tr className="bg-bg-page/60 font-medium">
-                <td className="px-3 py-3 text-right" colSpan={4}>
-                  费用总计
+                <td className="px-3 py-3 text-right" colSpan={3}>
+                  费用总计（折合人民币）
                 </td>
                 <td className="px-3 py-3 tabular-nums text-text-primary">
-                  {formatFeeCurrencyTotals(feeRows, "estimatedAmount", "estimatedCurrency")}
+                  {formatFeeCnyTotal(feeRows, "estimatedAmount", "estimatedCurrency")}
                 </td>
                 <td className="px-3 py-3 tabular-nums text-text-primary">
-                  {formatFeeCurrencyTotals(feeRows, "actualAmount", "actualCurrency")}
+                  {formatFeeCnyTotal(feeRows, "actualAmount", "actualCurrency")}
                 </td>
                 <td className="px-3 py-3" />
               </tr>

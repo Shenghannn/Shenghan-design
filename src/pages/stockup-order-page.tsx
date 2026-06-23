@@ -425,6 +425,18 @@ const logisticsProviderOptions = [
   },
 ];
 
+const logisticsPlanChannelOptions = Array.from(
+  new Map(
+    logisticsProviderOptions
+      .flatMap((provider) => provider.channels)
+      .map((channel) => [channel.value, channel]),
+  ).values(),
+);
+
+function getPrimaryProviderByChannel(channel: string) {
+  return logisticsProviderOptions.find((provider) => provider.channels.some((item) => item.value === channel));
+}
+
 function uniqueOptions(records: StockupOrderRecord[], getter: (record: StockupOrderRecord) => string) {
   return Array.from(new Set(records.map(getter))).map((value) => ({ label: value, value }));
 }
@@ -600,9 +612,7 @@ function CreateLogisticsPlanPage({
   const [customRemark, setCustomRemark] = useState("");
   const [activePlanTab, setActivePlanTab] = useState<PlanWorkspaceTab>("stockupDetail");
   const [overLimitPromptOpen, setOverLimitPromptOpen] = useState(false);
-  const selectedProvider = logisticsProviderOptions.find((item) => item.value === provider);
-  const channelOptions = selectedProvider?.channels ?? [];
-  const selectedChannel = channelOptions.find((item) => item.value === channel);
+  const selectedChannel = logisticsPlanChannelOptions.find((item) => item.value === channel);
   const transportModeOptions = selectedChannel?.transportModes.map((value) => ({ label: value, value })) ?? [];
   const totalWeightValue = sumNumber(planRecords.map((record) => record.totalWeight));
   const totalVolumeValue = sumNumber(planRecords.map((record) => record.totalVolume));
@@ -635,12 +645,6 @@ function CreateLogisticsPlanPage({
     { label: "物流信息", value: "logisticsInfo" },
   ];
 
-  function handleProviderChange(value: string) {
-    setProvider(value);
-    setChannel("");
-    setTransportMode("");
-  }
-
   function handleAddStockupOrder() {
     const baseRecord = planRecords[0] ?? records[0];
     if (!baseRecord) {
@@ -666,6 +670,7 @@ function CreateLogisticsPlanPage({
 
   function handleChannelChange(value: string) {
     setChannel(value);
+    setProvider(getPrimaryProviderByChannel(value)?.value ?? "");
     setTransportMode("");
   }
 
@@ -773,11 +778,11 @@ function CreateLogisticsPlanPage({
           <div className="mt-4">
             <div className="border-l-4 border-primary pl-3 font-medium text-text-primary">基础信息</div>
             <div className="mt-4 grid gap-x-8 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
-              <FormFieldRow label="物流商">
-                <Select options={logisticsProviderOptions} value={provider} placeholder="请选择" onValueChange={handleProviderChange} />
-              </FormFieldRow>
               <FormFieldRow label="物流渠道">
-                <Select options={channelOptions} value={channel} placeholder="请选择" onValueChange={handleChannelChange} disabled={!provider} />
+                <Select options={logisticsPlanChannelOptions} value={channel} placeholder="请选择" onValueChange={handleChannelChange} />
+              </FormFieldRow>
+              <FormFieldRow label="物流商">
+                <Input value={provider} placeholder="选择物流渠道后自动带出" disabled className="bg-bg-page text-text-secondary" />
               </FormFieldRow>
               <FormFieldRow label="运输方式">
                 <Select options={transportModeOptions} value={transportMode} placeholder="请选择" onValueChange={setTransportMode} disabled={!channel} />

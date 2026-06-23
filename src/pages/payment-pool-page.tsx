@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import {
   paymentPoolRecords as initialPaymentPoolRecords,
+  getCurrencyIcon,
   poolRecordToPlanGroup,
   type PaymentPoolRecord,
   validateFirstTripPaymentRequest,
@@ -190,8 +191,8 @@ function BatchExactSearch({
   );
 }
 
-function AmountCell({ value }: { value: number }) {
-  return <span className="font-tabular-nums">¥{formatAmount(value)}</span>;
+function AmountCell({ value, currency = "CNY" }: { value: number; currency?: string }) {
+  return <span className="font-tabular-nums">{getCurrencyIcon(currency)}{formatAmount(value)}</span>;
 }
 
 function PaymentPoolFeeDetailModal({
@@ -213,17 +214,16 @@ function PaymentPoolFeeDetailModal({
         <div><span className="text-text-secondary">物流商：</span>{record.logisticsProvider}</div>
         <div><span className="text-text-secondary">物流渠道：</span>{record.logisticsChannel}</div>
         <div><span className="text-text-secondary">物流商单号：</span>{record.logisticsBillNo}</div>
-        <div><span className="text-text-secondary">费用金额：</span><AmountCell value={record.feeAmount} /></div>
-        <div><span className="text-text-secondary">应付金额：</span><AmountCell value={record.payableAmount} /></div>
-        <div><span className="text-text-secondary">折扣金额：</span><AmountCell value={record.discountAmount} /></div>
+        <div><span className="text-text-secondary">费用金额：</span><AmountCell value={record.feeAmount} currency={record.currency} /></div>
+        <div><span className="text-text-secondary">应付金额：</span><AmountCell value={record.payableAmount} currency={record.currency} /></div>
+        <div><span className="text-text-secondary">折扣金额：</span><AmountCell value={record.discountAmount} currency={record.currency} /></div>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] border-collapse text-left text-small">
+        <table className="w-full min-w-[760px] border-collapse text-left text-small">
           <thead className="bg-bg-page text-text-muted">
             <tr>
               <th className={tableHeadCell}>序号</th>
-              <th className={tableHeadCell}>服务环节</th>
               <th className={tableHeadCell}>费用类型</th>
               <th className={`${tableHeadCell} text-right`}>费用金额</th>
               <th className={`${tableHeadCell} text-right`}>应付金额</th>
@@ -233,42 +233,24 @@ function PaymentPoolFeeDetailModal({
             </tr>
           </thead>
           <tbody className="divide-y divide-border bg-white">
-            {planGroup.serviceLinks.flatMap((link, linkIndex) => {
-              const linkSerial = linkIndex + 1;
-              return [
-                <tr key={link.id} className="bg-[#fafbfd] font-medium">
-                  <td className="px-3 py-3">{linkSerial}</td>
-                  <td className="whitespace-nowrap px-3 py-3">{link.serviceLinkName}</td>
-                  <td className="px-3 py-3" />
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={link.feeAmount} /></td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={link.payableAmount} /></td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={link.paidAmount} /></td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={link.applyingAmount} /></td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={link.notApplyAmount} /></td>
-                </tr>,
-                ...link.feeDetails.map((detail) => (
-                  <tr key={detail.id}>
-                    <td className="px-3 py-3" />
-                    <td className="px-3 py-3" />
-                    <td className="whitespace-nowrap px-3 py-3 pl-6 before:mr-2 before:text-text-disabled before:content-['└']">
-                      {detail.feeTypeName}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={detail.feeAmount} /></td>
-                    <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={detail.payableAmount} /></td>
-                    <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={detail.paidAmount} /></td>
-                    <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={detail.applyingAmount} /></td>
-                    <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={detail.notApplyAmount} /></td>
-                  </tr>
-                )),
-              ];
-            })}
+            {planGroup.serviceLinks.flatMap((link) => link.feeDetails).map((detail, index) => (
+              <tr key={detail.id}>
+                <td className="px-3 py-3">{index + 1}</td>
+                <td className="whitespace-nowrap px-3 py-3">{detail.feeTypeName}</td>
+                <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={detail.feeAmount} currency={record.currency} /></td>
+                <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={detail.payableAmount} currency={record.currency} /></td>
+                <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={detail.paidAmount} currency={record.currency} /></td>
+                <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={detail.applyingAmount} currency={record.currency} /></td>
+                <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={detail.notApplyAmount} currency={record.currency} /></td>
+              </tr>
+            ))}
             <tr className="bg-bg-page font-medium">
-              <td className="px-3 py-3" colSpan={3}>合计</td>
-              <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.feeAmount} /></td>
-              <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.payableAmount} /></td>
-              <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.amountPaid} /></td>
-              <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.applyingAmount} /></td>
-              <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.notApplyAmount} /></td>
+              <td className="px-3 py-3" colSpan={2}>合计</td>
+              <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.feeAmount} currency={record.currency} /></td>
+              <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.payableAmount} currency={record.currency} /></td>
+              <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.amountPaid} currency={record.currency} /></td>
+              <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.applyingAmount} currency={record.currency} /></td>
+              <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.notApplyAmount} currency={record.currency} /></td>
             </tr>
           </tbody>
         </table>
@@ -538,7 +520,7 @@ function PaymentPoolListPage({
                   <td className="whitespace-nowrap px-3 py-3">{record.logisticsChannel}</td>
                   <td className="whitespace-nowrap px-3 py-3 text-right">
                     <div className="inline-flex items-center justify-end gap-2">
-                      <AmountCell value={record.feeAmount} />
+                      <AmountCell value={record.feeAmount} currency={record.currency} />
                       <button
                         type="button"
                         className="border-0 bg-transparent p-0 text-primary hover:underline"
@@ -548,12 +530,12 @@ function PaymentPoolListPage({
                       </button>
                     </div>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.payableAmount} /></td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.discountAmount} /></td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.amountPaid} /></td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.amountNotPaid} /></td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.applyingAmount} /></td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.notApplyAmount} /></td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.payableAmount} currency={record.currency} /></td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.discountAmount} currency={record.currency} /></td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.amountPaid} currency={record.currency} /></td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.amountNotPaid} currency={record.currency} /></td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.applyingAmount} currency={record.currency} /></td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right"><AmountCell value={record.notApplyAmount} currency={record.currency} /></td>
                   <td className="whitespace-nowrap px-3 py-3">{record.feeInputUser}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.entryTime}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.finishPayTime || "-"}</td>
