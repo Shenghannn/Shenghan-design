@@ -1,10 +1,9 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { DateRangePicker, type DateRangeValue } from "../components/ui/date-range-picker";
-import { ExclusiveFilterGroup, useExclusiveFilterPanel } from "../components/ui/exclusive-filter-group";
+import { ExclusiveFilterGroup } from "../components/ui/exclusive-filter-group";
 import { Input } from "../components/ui/input";
 import { MultiSelectFilter } from "../components/ui/multi-select-filter";
 import { Pagination } from "../components/ui/pagination";
@@ -52,7 +51,31 @@ const serviceScopeOptions = [
   { label: "全程运输", value: "全程运输" },
   { label: "分段运输", value: "分段运输" },
 ];
-const serviceScopeFilterOptions = [{ label: "全部服务范围", value: "all" }, ...serviceScopeOptions];
+const serviceScopeFilterOptions = serviceScopeOptions;
+
+const originWarehouseOptions = ["义乌集货仓", "深圳集货仓", "宁波集货仓", "广州集货仓"];
+const destinationWarehouseOptions = [
+  "谷仓美西洛杉矶仓",
+  "美东纽约仓",
+  "美南休斯顿仓",
+  "加拿大多伦多仓",
+  "加拿大温哥华仓",
+  "德国科隆仓",
+  "英国伦敦仓",
+  "易达云美东仓",
+];
+const originWarehouseFilterOptions = originWarehouseOptions.map((warehouse) => ({
+  label: warehouse,
+  value: warehouse,
+}));
+const destinationWarehouseFilterOptions = destinationWarehouseOptions.map((warehouse) => ({
+  label: warehouse,
+  value: warehouse,
+}));
+const timeTypeFilterOptions = [
+  { label: "创建时间", value: "created" },
+  { label: "更新时间", value: "updated" },
+];
 
 const providerCurrencyMap: Record<string, string> = {
   "义乌市双捷国际货运代理有限公司": "CNY",
@@ -100,13 +123,6 @@ function getProviderCurrency(provider: string) {
   return providerCurrencyMap[provider] ?? "CNY";
 }
 
-const addressTree = [
-  { country: "中国", provinces: [{ name: "浙江省", cities: ["义乌", "宁波"] }, { name: "广东省", cities: ["深圳", "广州"] }] },
-  { country: "美国", provinces: [{ name: "加利福尼亚州", cities: ["洛杉矶", "希尔顿"] }, { name: "纽约州", cities: ["纽约市"] }] },
-  { country: "加拿大", provinces: [{ name: "不列颠哥伦比亚省", cities: ["温哥华"] }, { name: "安大略省", cities: ["多伦多"] }] },
-  { country: "德国", provinces: [{ name: "北威州", cities: ["科隆"] }, { name: "巴伐利亚州", cities: ["慕尼黑"] }] },
-];
-
 const quoteRateRecords: QuoteRateRecord[] = [
   {
     id: "qr-001",
@@ -116,8 +132,8 @@ const quoteRateRecords: QuoteRateRecord[] = [
     logisticsProvider: "义乌市双捷国际货运代理有限公司、浙江融盛国际物流有限公司",
     logisticsChannel: "美南标快",
     serviceScope: "分段运输",
-    origin: "中国-浙江省-义乌",
-    destination: "美国-加利福尼亚州-洛杉矶",
+    origin: "义乌集货仓",
+    destination: "谷仓美西洛杉矶仓",
     currency: "USD",
     taxIncluded: "是",
     validFrom: "2026-06-01",
@@ -138,8 +154,8 @@ const quoteRateRecords: QuoteRateRecord[] = [
     logisticsProvider: "浙江融盛国际物流有限公司",
     logisticsChannel: "欧洲快线",
     serviceScope: "全程运输",
-    origin: "中国-广东省-深圳",
-    destination: "德国-北威州-科隆",
+    origin: "深圳集货仓",
+    destination: "德国科隆仓",
     currency: "EUR",
     taxIncluded: "否",
     validFrom: "2026-06-10",
@@ -160,8 +176,8 @@ const quoteRateRecords: QuoteRateRecord[] = [
     logisticsProvider: "宁波赛蓝供应链服务有限公司",
     logisticsChannel: "加拿大卡派",
     serviceScope: "全程运输",
-    origin: "中国-浙江省-宁波",
-    destination: "加拿大-安大略省-多伦多",
+    origin: "宁波集货仓",
+    destination: "加拿大多伦多仓",
     currency: "CAD",
     taxIncluded: "是",
     validFrom: "2026-06-15",
@@ -192,6 +208,17 @@ function getPrimaryLogisticsProvider(providerText: string) {
   return providerText.split("、")[0] ?? "";
 }
 
+function getPrimaryWarehouse(warehouseText: string) {
+  return warehouseText.split("、").map((item) => item.trim()).filter(Boolean)[0] ?? "";
+}
+
+function matchesWarehouseFilter(recordValue: string, selected: string[]) {
+  if (selected.length === 0) {
+    return true;
+  }
+  return selected.includes(getPrimaryWarehouse(recordValue));
+}
+
 function inDateRange(dateText: string, range: DateRangeValue) {
   const date = dateText.slice(0, 10);
   if (range.start && date < range.start) {
@@ -201,104 +228,6 @@ function inDateRange(dateText: string, range: DateRangeValue) {
     return false;
   }
   return true;
-}
-
-function AddressCascade({
-  placeholder,
-  value,
-  onChange,
-  className,
-}: {
-  placeholder: string;
-  value: string;
-  onChange: (value: string) => void;
-  className?: string;
-}) {
-  const panelId = useId();
-  const { open, toggle, setOpen } = useExclusiveFilterPanel(panelId);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [countryName, setCountryName] = useState(addressTree[0].country);
-  const country = addressTree.find((item) => item.country === countryName) ?? addressTree[0];
-  const [provinceName, setProvinceName] = useState(country.provinces[0].name);
-  const province = country.provinces.find((item) => item.name === provinceName) ?? country.provinces[0];
-
-  useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    return () => window.removeEventListener("pointerdown", handlePointerDown);
-  }, []);
-
-  return (
-    <div ref={containerRef} className={cn("group relative min-w-0", className)}>
-      <button
-        type="button"
-        className="field-control relative flex w-full items-center justify-between gap-2 pr-10 text-left"
-        onClick={toggle}
-      >
-        <span className={cn("min-w-0 flex-1 truncate", value ? "text-text-primary" : "text-text-placeholder")}>
-          {value || placeholder}
-        </span>
-        <ChevronDown
-          aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted transition-transform",
-            open && "rotate-180",
-          )}
-        />
-      </button>
-      {open ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 grid w-full min-w-[280px] max-w-[min(600px,calc(100vw-32px))] grid-cols-1 rounded-md border border-border bg-white shadow-lg sm:grid-cols-3">
-          <div className="max-h-[240px] overflow-auto border-r border-border py-2">
-            {addressTree.map((item) => (
-              <button
-                key={item.country}
-                type="button"
-                className={`flex w-full items-center justify-between px-4 py-2 text-left text-small hover:bg-bg-hover ${item.country === countryName ? "font-medium text-primary" : "text-text-primary"}`}
-                onClick={() => {
-                  setCountryName(item.country);
-                  setProvinceName(item.provinces[0].name);
-                }}
-              >
-                {item.country}<span>›</span>
-              </button>
-            ))}
-          </div>
-          <div className="max-h-[240px] overflow-auto border-r border-border py-2">
-            {country.provinces.map((item) => (
-              <button
-                key={item.name}
-                type="button"
-                className={`flex w-full items-center justify-between px-4 py-2 text-left text-small hover:bg-bg-hover ${item.name === provinceName ? "font-medium text-primary" : "text-text-primary"}`}
-                onClick={() => setProvinceName(item.name)}
-              >
-                {item.name}<span>›</span>
-              </button>
-            ))}
-          </div>
-          <div className="max-h-[240px] overflow-auto py-2">
-            {province.cities.map((city) => (
-              <button
-                key={city}
-                type="button"
-                className="block w-full px-4 py-2 text-left text-small hover:bg-bg-hover"
-                onClick={() => {
-                  onChange(`${countryName}-${provinceName}-${city}`);
-                  setOpen(false);
-                }}
-              >
-                {city}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function SectionTitle({ children }: { children: string }) {
@@ -582,10 +511,10 @@ function QuoteRateForm({
   const initialPricingMode =
     record?.pricingMode === "按重量区间报价" ? "按重量段报价" : record?.pricingMode;
   const [quoteName, setQuoteName] = useState(record?.quoteName ?? "");
-  const [logisticsProvider, setLogisticsProvider] = useState(record?.logisticsProvider.split("、")[0] ?? "");
+  const [logisticsProvider, setLogisticsProvider] = useState(record?.logisticsProvider?.split("、")[0] ?? "");
   const [serviceScope, setServiceScope] = useState<ServiceScope>(record?.serviceScope ?? "全程运输");
-  const [origin, setOrigin] = useState(record?.origin ?? "");
-  const [destination, setDestination] = useState(record?.destination ?? "");
+  const [origin, setOrigin] = useState(() => getPrimaryWarehouse(record?.origin ?? ""));
+  const [destination, setDestination] = useState(() => getPrimaryWarehouse(record?.destination ?? ""));
   const [shippingCompany, setShippingCompany] = useState(record?.carrier ?? "");
   const [taxIncluded, setTaxIncluded] = useState(record?.taxIncluded ?? "是");
   const [validRange, setValidRange] = useState<DateRangeValue>({ start: record?.validFrom ?? "", end: record?.validTo ?? "" });
@@ -598,6 +527,7 @@ function QuoteRateForm({
 
   return (
     <div className="min-w-0 space-y-4 pb-16">
+      <ExclusiveFilterGroup>
       <Card>
         <SectionTitle>基本信息</SectionTitle>
         <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -615,7 +545,13 @@ function QuoteRateForm({
             </FormRow>
           ) : null}
           <FormRow label="物流商" required>
-            <Select value={logisticsProvider} placeholder="请选择物流商" options={optionList(logisticsProviderOptions)} onValueChange={setLogisticsProvider} />
+            <Select
+              value={logisticsProvider}
+              placeholder="请选择物流商"
+              options={optionList(logisticsProviderOptions)}
+              clearable={false}
+              onValueChange={setLogisticsProvider}
+            />
           </FormRow>
           <FormRow label="服务范围" required>
             <Select
@@ -625,11 +561,11 @@ function QuoteRateForm({
               onValueChange={(value) => setServiceScope(value as ServiceScope)}
             />
           </FormRow>
-          <FormRow label="发货地" required>
-            <AddressCascade value={origin} placeholder="请选择发货地" onChange={setOrigin} />
+          <FormRow label="发货仓" required>
+            <Select value={origin} placeholder="请选择发货仓" options={originWarehouseFilterOptions} onValueChange={setOrigin} />
           </FormRow>
-          <FormRow label="目的地" required>
-            <AddressCascade value={destination} placeholder="请选择目的地" onChange={setDestination} />
+          <FormRow label="目的仓" required>
+            <Select value={destination} placeholder="请选择目的仓" options={destinationWarehouseFilterOptions} onValueChange={setDestination} />
           </FormRow>
           <FormRow label="船司" required>
             <Input value={shippingCompany} placeholder="请输入船司" maxLength={255} onChange={(event) => setShippingCompany(event.target.value)} />
@@ -676,14 +612,13 @@ function QuoteRateForm({
         </div>
       </Card>
 
-      <Card>
+      <Card className="min-h-[280px]">
         <SectionTitle>{serviceScope === "全程运输" ? "全程运输报价" : "服务类型报价"}</SectionTitle>
         {!logisticsProvider ? (
           <div className="mt-3 rounded-sm border border-warning bg-warning/10 px-3 py-2 text-small text-warning">
             请先选择物流商，系统会根据服务范围和服务类型展示对应费用项。
           </div>
-        ) : null}
-        {logisticsProvider ? (
+        ) : (
           <div className="mt-4 space-y-4">
             {serviceTypeQuoteConfigs.map((config) => (
               <div
@@ -710,8 +645,9 @@ function QuoteRateForm({
               </div>
             ))}
           </div>
-        ) : null}
+        )}
       </Card>
+      </ExclusiveFilterGroup>
 
       <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap justify-center gap-3 border-t border-border bg-white px-4 py-3 shadow-lg sm:px-6">
         <Button variant="secondary" size="sm" onClick={onBack}>取消</Button>
@@ -953,8 +889,8 @@ function QuoteRateDetail({
             <InfoItem label="发货方式" value={record.shippingMode} />
             <InfoItem label="物流商" value={provider} />
             <InfoItem label="服务范围" value={record.serviceScope} />
-            <InfoItem label="发货地" value={record.origin} />
-            <InfoItem label="目的地" value={record.destination} />
+            <InfoItem label="发货仓" value={getPrimaryWarehouse(record.origin)} />
+            <InfoItem label="目的仓" value={getPrimaryWarehouse(record.destination)} />
             <InfoItem label="船司" value={record.carrier} />
             <InfoItem label="是否含税" value={record.taxIncluded} />
             <InfoItem label="价格有效期" value={`${record.validFrom} ~ ${record.validTo}`} />
@@ -1000,6 +936,25 @@ type LogisticsQuoteRateWorkspaceTab =
   | "logistics-quote-rate-edit-lcl"
   | "logistics-quote-rate-detail";
 
+type QuoteRateView = "list" | "create-fcl" | "edit-fcl" | "create-lcl" | "edit-lcl" | "detail";
+
+function resolveQuoteRateView(tab: string): QuoteRateView {
+  switch (tab) {
+    case "logistics-quote-rate-create-fcl":
+      return "create-fcl";
+    case "logistics-quote-rate-edit-fcl":
+      return "edit-fcl";
+    case "logistics-quote-rate-create-lcl":
+      return "create-lcl";
+    case "logistics-quote-rate-edit-lcl":
+      return "edit-lcl";
+    case "logistics-quote-rate-detail":
+      return "detail";
+    default:
+      return "list";
+  }
+}
+
 export function LogisticsQuoteRatePage({
   resetKey = 0,
   activeWorkspaceTab = "logistics-quote-rate",
@@ -1009,14 +964,14 @@ export function LogisticsQuoteRatePage({
   activeWorkspaceTab?: string;
   onOpenWorkspaceTab?: (tab: LogisticsQuoteRateWorkspaceTab) => void;
 }) {
-  const [view, setView] = useState<"list" | "create-fcl" | "edit-fcl" | "create-lcl" | "edit-lcl" | "detail">("list");
+  const view = resolveQuoteRateView(activeWorkspaceTab);
   const [activeRecordId, setActiveRecordId] = useState(quoteRateRecords[0]?.id ?? "");
   const [quoteNameFilter, setQuoteNameFilter] = useState("");
   const [quoteId, setQuoteId] = useState("");
   const [providers, setProviders] = useState<string[]>([]);
-  const [serviceScopeFilter, setServiceScopeFilter] = useState("all");
-  const [origin, setOrigin] = useState("");
-  const [destination, setDestination] = useState("");
+  const [serviceScopeFilter, setServiceScopeFilter] = useState("");
+  const [originFilters, setOriginFilters] = useState<string[]>([]);
+  const [destinationFilters, setDestinationFilters] = useState<string[]>([]);
   const [timeType, setTimeType] = useState("created");
   const [timeRange, setTimeRange] = useState<DateRangeValue>(emptyRange());
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -1034,14 +989,14 @@ export function LogisticsQuoteRatePage({
       const matchesQuoteName = !quoteNameFilter.trim() || record.quoteName.includes(quoteNameFilter.trim());
       const matchesQuoteId = !quoteId.trim() || record.quoteId === quoteId.trim();
       const matchesProvider = providers.length === 0 || providers.includes(recordProvider);
-      const matchesServiceScope = serviceScopeFilter === "all" || record.serviceScope === serviceScopeFilter;
-      const matchesOrigin = !origin || record.origin === origin;
-      const matchesDestination = !destination || record.destination === destination;
+      const matchesServiceScope = !serviceScopeFilter || record.serviceScope === serviceScopeFilter;
+      const matchesOrigin = matchesWarehouseFilter(record.origin, originFilters);
+      const matchesDestination = matchesWarehouseFilter(record.destination, destinationFilters);
       const timeValue = timeType === "updated" ? record.updatedAt : record.createdAt;
       const matchesTime = inDateRange(timeValue, timeRange);
       return matchesQuoteName && matchesQuoteId && matchesProvider && matchesServiceScope && matchesOrigin && matchesDestination && matchesTime;
     });
-  }, [destination, origin, providers, quoteId, quoteNameFilter, serviceScopeFilter, timeRange, timeType]);
+  }, [destinationFilters, originFilters, providers, quoteId, quoteNameFilter, serviceScopeFilter, timeRange, timeType]);
 
   const totalPages = Math.max(Math.ceil(filteredRecords.length / pageSize), 1);
   const safePage = Math.min(page, totalPages);
@@ -1051,37 +1006,20 @@ export function LogisticsQuoteRatePage({
   const activeRecord = quoteRateRecords.find((record) => record.id === activeRecordId) ?? quoteRateRecords[0];
 
   useEffect(() => {
-    setView("list");
+    if (resetKey === 0) {
+      return;
+    }
+    resetFilters();
+    onOpenWorkspaceTab?.("logistics-quote-rate");
   }, [resetKey]);
-
-  useEffect(() => {
-    if (activeWorkspaceTab === "logistics-quote-rate") {
-      setView("list");
-    }
-    if (activeWorkspaceTab === "logistics-quote-rate-create-fcl") {
-      setView("create-fcl");
-    }
-    if (activeWorkspaceTab === "logistics-quote-rate-edit-fcl") {
-      setView("edit-fcl");
-    }
-    if (activeWorkspaceTab === "logistics-quote-rate-create-lcl") {
-      setView("create-lcl");
-    }
-    if (activeWorkspaceTab === "logistics-quote-rate-edit-lcl") {
-      setView("edit-lcl");
-    }
-    if (activeWorkspaceTab === "logistics-quote-rate-detail") {
-      setView("detail");
-    }
-  }, [activeWorkspaceTab]);
 
   function resetFilters() {
     setQuoteNameFilter("");
     setQuoteId("");
     setProviders([]);
-    setServiceScopeFilter("all");
-    setOrigin("");
-    setDestination("");
+    setServiceScopeFilter("");
+    setOriginFilters([]);
+    setDestinationFilters([]);
     setTimeType("created");
     setTimeRange(emptyRange());
     setPage(1);
@@ -1097,13 +1035,11 @@ export function LogisticsQuoteRatePage({
 
   function openEdit(record: QuoteRateRecord) {
     setActiveRecordId(record.id);
-    setView(record.shippingMode === "整柜" ? "edit-fcl" : "edit-lcl");
     onOpenWorkspaceTab?.(record.shippingMode === "整柜" ? "logistics-quote-rate-edit-fcl" : "logistics-quote-rate-edit-lcl");
   }
 
   function openDetail(record: QuoteRateRecord) {
     setActiveRecordId(record.id);
-    setView("detail");
     onOpenWorkspaceTab?.("logistics-quote-rate-detail");
   }
 
@@ -1111,16 +1047,11 @@ export function LogisticsQuoteRatePage({
     const isEdit = view === "edit-fcl" || view === "edit-lcl";
     return (
       <QuoteRateForm
+        key={activeWorkspaceTab}
         mode={view}
         record={isEdit ? activeRecord : undefined}
-        onBack={() => {
-          setView("list");
-          onOpenWorkspaceTab?.("logistics-quote-rate");
-        }}
-        onSubmit={() => {
-          setView("list");
-          onOpenWorkspaceTab?.("logistics-quote-rate");
-        }}
+        onBack={() => onOpenWorkspaceTab?.("logistics-quote-rate")}
+        onSubmit={() => onOpenWorkspaceTab?.("logistics-quote-rate")}
       />
     );
   }
@@ -1129,10 +1060,7 @@ export function LogisticsQuoteRatePage({
     return (
       <QuoteRateDetail
         record={activeRecord}
-        onBack={() => {
-          setView("list");
-          onOpenWorkspaceTab?.("logistics-quote-rate");
-        }}
+        onBack={() => onOpenWorkspaceTab?.("logistics-quote-rate")}
         onEdit={() => openEdit(activeRecord)}
       />
     );
@@ -1157,30 +1085,46 @@ export function LogisticsQuoteRatePage({
             setPage(1);
           }} />
           <MultiSelectFilter placeholder="物流商" options={providerFilterOptions} value={providers} onChange={setProviders} />
-          <Select className="w-[150px]" options={serviceScopeFilterOptions} value={serviceScopeFilter} onValueChange={(value) => {
+          <Select className="w-[150px]" placeholder="服务范围" options={serviceScopeFilterOptions} value={serviceScopeFilter} onValueChange={(value) => {
             setServiceScopeFilter(value);
             setPage(1);
           }} />
-          <AddressCascade className="w-full sm:w-[220px]" placeholder="发货地" value={origin} onChange={setOrigin} />
-          <AddressCascade className="w-full sm:w-[220px]" placeholder="目的地" value={destination} onChange={setDestination} />
+          <MultiSelectFilter
+            placeholder="发货仓"
+            options={originWarehouseFilterOptions}
+            value={originFilters}
+            onChange={(value) => {
+              setOriginFilters(value);
+              setPage(1);
+            }}
+          />
+          <MultiSelectFilter
+            placeholder="目的仓"
+            options={destinationWarehouseFilterOptions}
+            value={destinationFilters}
+            onChange={(value) => {
+              setDestinationFilters(value);
+              setPage(1);
+            }}
+          />
           <Select
             className="w-[128px]"
             value={timeType}
+            clearable={false}
             onValueChange={(value) => {
               setTimeType(value);
               setPage(1);
             }}
-            options={[
-              { label: "创建时间", value: "created" },
-              { label: "更新时间", value: "updated" },
-            ]}
+            options={timeTypeFilterOptions}
           />
           <DateRangePicker value={timeRange} onChange={(value) => {
             setTimeRange(value);
             setPage(1);
           }} />
-          <Button variant="primary" size="sm">查询</Button>
-          <Button variant="secondary" size="sm" onClick={resetFilters}>重置</Button>
+          <div className="flex shrink-0 items-center gap-3">
+            <Button variant="primary" size="sm">查询</Button>
+            <Button variant="secondary" size="sm" onClick={resetFilters}>重置</Button>
+          </div>
         </div>
         </ExclusiveFilterGroup>
       </Card>
@@ -1191,20 +1135,14 @@ export function LogisticsQuoteRatePage({
             <Button
               variant="primary"
               size="sm"
-              onClick={() => {
-                setView("create-fcl");
-                onOpenWorkspaceTab?.("logistics-quote-rate-create-fcl");
-              }}
+              onClick={() => onOpenWorkspaceTab?.("logistics-quote-rate-create-fcl")}
             >
               添加整柜报价
             </Button>
             <Button
               variant="primary"
               size="sm"
-              onClick={() => {
-                setView("create-lcl");
-                onOpenWorkspaceTab?.("logistics-quote-rate-create-lcl");
-              }}
+              onClick={() => onOpenWorkspaceTab?.("logistics-quote-rate-create-lcl")}
             >
               添加散货报价
             </Button>
@@ -1226,8 +1164,8 @@ export function LogisticsQuoteRatePage({
                 <th className={tableHeadCell}>发货方式</th>
                 <th className={tableHeadCell}>物流商</th>
                 <th className={tableHeadCell}>服务范围</th>
-                <th className={tableHeadCell}>发货地</th>
-                <th className={tableHeadCell}>目的地</th>
+                <th className={tableHeadCell}>发货仓</th>
+                <th className={tableHeadCell}>目的仓</th>
                 <th className={tableHeadCell}>是否含税</th>
                 <th className={tableHeadCell}>价格有效期</th>
                 <th className={tableHeadCell}>创建人/创建时间</th>
@@ -1248,8 +1186,8 @@ export function LogisticsQuoteRatePage({
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">{getPrimaryLogisticsProvider(record.logisticsProvider)}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.serviceScope}</td>
-                  <td className="whitespace-nowrap px-3 py-3">{record.origin}</td>
-                  <td className="whitespace-nowrap px-3 py-3">{record.destination}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{getPrimaryWarehouse(record.origin)}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{getPrimaryWarehouse(record.destination)}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.taxIncluded}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.validFrom} ~ {record.validTo}</td>
                   <td className="whitespace-nowrap px-3 py-3">

@@ -235,6 +235,7 @@ export function Select({
                         active && "bg-primary-subtle text-primary",
                         option.disabled && "cursor-not-allowed opacity-50",
                       )}
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => handleSelect(option.value)}
                     >
                       <span className="inline-flex w-4 items-center justify-center">

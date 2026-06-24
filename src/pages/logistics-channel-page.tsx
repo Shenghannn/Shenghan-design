@@ -65,16 +65,19 @@ const schemeTableHeadCell = `${tableHeadCell} align-top`;
 const schemeTableCell = "px-3 py-3 align-top";
 
 const transportModeOptions = [
-  { label: "全部运输方式", value: "all" },
   { label: "海运", value: "海运" },
   { label: "快递", value: "快递" },
   { label: "空运", value: "空运" },
 ];
 
-const statusOptions = [
-  { label: "全部状态", value: "all" },
+const statusFilterOptions = [
   { label: "启用", value: "启用" },
   { label: "禁用", value: "禁用" },
+];
+
+const timeTypeFilterOptions = [
+  { label: "创建时间", value: "created" },
+  { label: "更新时间", value: "updated" },
 ];
 
 const channelStatusOptions = [
@@ -87,10 +90,6 @@ const firstLegProviderModeOptions = [
   { label: "多物流商联运", value: "multi" },
 ];
 
-const firstLegProviderModeFilterOptions = [
-  { label: "全部头程物流商模式", value: "all" },
-  ...firstLegProviderModeOptions,
-];
 
 const logisticsQuoteRecords = [
   {
@@ -220,7 +219,7 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     providerChannelId: "EPP-USA-001",
     providerChannelName: "易可达标准",
     transportMode: "海运",
-    routeLine: "美国-加州洛杉矶-希尔顿",
+    routeLine: "谷仓美西洛杉矶仓",
     agingDays: 66,
     volumeFactor: "6000",
     remark: "谷仓海外仓标准渠道",
@@ -241,7 +240,7 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     providerChannelId: "EPP-USA-002",
     providerChannelName: "双捷海运",
     transportMode: "海运",
-    routeLine: "美国-加州洛杉矶-希尔顿、美国-休斯顿",
+    routeLine: "谷仓美西洛杉矶仓、美南休斯顿仓",
     agingDays: 21,
     volumeFactor: "6000",
     remark: "美南海运标快",
@@ -262,7 +261,7 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     providerChannelId: "EPP-USA-004",
     providerChannelName: "宁波赛蓝",
     transportMode: "海运",
-    routeLine: "美国-加州洛杉矶-希尔顿、美国-纽约",
+    routeLine: "谷仓美西洛杉矶仓、美东纽约仓",
     agingDays: 222,
     volumeFactor: "5000",
     remark: "宁波赛蓝海运渠道",
@@ -283,7 +282,7 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     providerChannelId: "EPP-USA-003",
     providerChannelName: "海运联运",
     transportMode: "海运",
-    routeLine: "美国-加州洛杉矶-希尔顿、美国-纽约",
+    routeLine: "谷仓美西洛杉矶仓、美东纽约仓",
     agingDays: 21,
     volumeFactor: "6000",
     remark: "多段联运渠道，含多物流商联运",
@@ -305,7 +304,7 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     providerChannelId: "EPP-CAN-001",
     providerChannelName: "紫式",
     transportMode: "海运",
-    routeLine: "加拿大-大多伦多配送线路、温哥华线路",
+    routeLine: "加拿大多伦多仓、加拿大温哥华仓",
     agingDays: 1,
     volumeFactor: "5000",
     remark: "加拿大本地配送",
@@ -326,7 +325,7 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     providerChannelId: "EXP-USA-001",
     providerChannelName: "单快",
     transportMode: "快递",
-    routeLine: "美国-纽约州-纽约市",
+    routeLine: "美东纽约仓",
     agingDays: 7,
     volumeFactor: "6000",
     remark: "DHL快递渠道",
@@ -347,7 +346,7 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     providerChannelId: "EXP-USA-003",
     providerChannelName: "特快",
     transportMode: "快递",
-    routeLine: "美国-加州洛杉矶-希尔顿",
+    routeLine: "谷仓美西洛杉矶仓",
     agingDays: 8,
     volumeFactor: "6000",
     remark: "UPS特快渠道",
@@ -368,7 +367,7 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
     providerChannelId: "EXP-USA-002",
     providerChannelName: "绿卡",
     transportMode: "快递",
-    routeLine: "美国-加州洛杉矶-希尔顿",
+    routeLine: "谷仓美西洛杉矶仓",
     agingDays: 8,
     volumeFactor: "6000",
     remark: "快递禁用渠道",
@@ -385,44 +384,31 @@ const logisticsChannelRecords: LogisticsChannelRecord[] = [
   },
 ];
 
-const routeTree = [
-  {
-    country: "加拿大（CAN）",
-    provinces: [
-      { name: "不列颠哥伦比亚省（BC）", cities: ["温哥华", "本拿比", "列治文"] },
-      { name: "安大略省（ON）", cities: ["多伦多", "渥太华"] },
-      { name: "魁北克省（QC）", cities: ["蒙特利尔"] },
-    ],
-  },
-  {
-    country: "德国（DEU）",
-    provinces: [
-      { name: "北莱茵-威斯特法伦州", cities: ["科隆", "杜塞尔多夫"] },
-      { name: "巴伐利亚州", cities: ["慕尼黑", "纽伦堡"] },
-    ],
-  },
-  {
-    country: "英国（GBR）",
-    provinces: [
-      { name: "英格兰", cities: ["伦敦", "曼彻斯特"] },
-      { name: "苏格兰", cities: ["爱丁堡"] },
-    ],
-  },
-  {
-    country: "美国（USA）",
-    provinces: [
-      { name: "加利福尼亚州（CA）", cities: ["洛杉矶", "希尔顿", "旧金山"] },
-      { name: "纽约州（NY）", cities: ["纽约市", "布法罗"] },
-      { name: "德克萨斯州（TX）", cities: ["休斯顿", "达拉斯"] },
-    ],
-  },
+const destinationWarehouseOptions = [
+  "谷仓美西洛杉矶仓",
+  "美东纽约仓",
+  "美南休斯顿仓",
+  "加拿大多伦多仓",
+  "加拿大温哥华仓",
+  "德国科隆仓",
+  "英国伦敦仓",
+  "易达云美东仓",
 ];
 
-function buildOptions(values: string[], allLabel: string) {
-  return [
-    { label: allLabel, value: "all" },
-    ...Array.from(new Set(values)).map((value) => ({ label: value, value })),
-  ];
+const destinationWarehouseFilterOptions = destinationWarehouseOptions.map((warehouse) => ({
+  label: warehouse,
+  value: warehouse,
+}));
+
+function matchesDestinationWarehouse(recordValue: string, filterValue: string) {
+  if (!filterValue) {
+    return true;
+  }
+  return recordValue.split("、").map((item) => item.trim()).includes(filterValue);
+}
+
+function getPrimaryDestinationWarehouse(routeLine: string) {
+  return routeLine.split("、").map((item) => item.trim()).filter(Boolean)[0] ?? "";
 }
 
 function statusTone(status: LogisticsChannelStatus) {
@@ -473,108 +459,6 @@ function InfoItem({ label, value }: { label: string; value: string }) {
     <div className="grid grid-cols-1 gap-1 text-small sm:grid-cols-[112px_1fr] sm:gap-3">
       <div className="text-text-secondary">{label}：</div>
       <div className="min-w-0 break-words text-text-primary">{value || "-"}</div>
-    </div>
-  );
-}
-
-function RouteSelector({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const panelId = useId();
-  const { open, setOpen, toggle } = useExclusiveFilterPanel(panelId);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const [activeCountry, setActiveCountry] = useState(routeTree[0].country);
-  const country = routeTree.find((item) => item.country === activeCountry) ?? routeTree[0];
-  const [activeProvince, setActiveProvince] = useState(country.provinces[0].name);
-  const province = country.provinces.find((item) => item.name === activeProvince) ?? country.provinces[0];
-  const selectedRoutes = value ? value.split("、").filter(Boolean) : [];
-
-  function toggleRoute(route: string) {
-    const next = selectedRoutes.includes(route)
-      ? selectedRoutes.filter((item) => item !== route)
-      : [...selectedRoutes, route];
-    onChange(next.join("、"));
-  }
-
-  useLayoutEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [open, setOpen]);
-
-  return (
-    <div ref={rootRef} className="group relative">
-      <button
-        type="button"
-        className="field-control flex w-full items-center justify-between gap-2 pr-10 text-left"
-        onClick={toggle}
-      >
-        <span className={value ? "min-w-0 flex-1 truncate text-text-primary" : "min-w-0 flex-1 truncate text-text-placeholder"}>
-          {value || "请选择目的地"}
-        </span>
-        <SelectChevron open={open} />
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-[calc(100%+6px)] z-50 grid w-[720px] grid-cols-3 rounded-md border border-border bg-white shadow-lg">
-          <div className="max-h-[260px] overflow-auto border-r border-border py-2">
-            {routeTree.map((item) => (
-              <button
-                key={item.country}
-                type="button"
-                className={`flex w-full items-center justify-between px-4 py-2 text-left text-small hover:bg-bg-hover ${
-                  item.country === activeCountry ? "font-medium text-primary" : "text-text-primary"
-                }`}
-                onClick={() => {
-                  setActiveCountry(item.country);
-                  setActiveProvince(item.provinces[0].name);
-                }}
-              >
-                <span><input type="checkbox" className="mr-2" readOnly />{item.country}</span>
-                <span>›</span>
-              </button>
-            ))}
-          </div>
-          <div className="max-h-[260px] overflow-auto border-r border-border py-2">
-            {country.provinces.map((item) => (
-              <button
-                key={item.name}
-                type="button"
-                className={`flex w-full items-center justify-between px-4 py-2 text-left text-small hover:bg-bg-hover ${
-                  item.name === activeProvince ? "font-medium text-primary" : "text-text-primary"
-                }`}
-                onClick={() => setActiveProvince(item.name)}
-              >
-                <span><input type="checkbox" className="mr-2" readOnly />{item.name}</span>
-                <span>›</span>
-              </button>
-            ))}
-          </div>
-          <div className="max-h-[260px] overflow-auto py-2">
-            {province.cities.map((city) => {
-              const route = `${activeCountry.replace(/（.*）/, "")}-${province.name.replace(/（.*）/, "")}-${city}`;
-              return (
-                <label key={city} className="flex cursor-pointer items-center px-4 py-2 text-small hover:bg-bg-hover">
-                  <input type="checkbox" className="mr-2" checked={selectedRoutes.includes(route)} onChange={() => toggleRoute(route)} />
-                  {city}
-                </label>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -769,7 +653,7 @@ function LogisticsChannelForm({
 }) {
   const [channelName, setChannelName] = useState(record?.providerChannelName ?? "");
   const [transportMode, setTransportMode] = useState(record?.transportMode ?? "");
-  const [routeLine, setRouteLine] = useState(record?.routeLine ?? "");
+  const [routeLine, setRouteLine] = useState(() => getPrimaryDestinationWarehouse(record?.routeLine ?? ""));
   const [status, setStatus] = useState<LogisticsChannelStatus>(record?.status ?? "启用");
   const [remark, setRemark] = useState(record?.remark ?? "");
   const [firstLegProviderMode, setFirstLegProviderMode] = useState<FirstLegProviderMode>(() =>
@@ -853,11 +737,16 @@ function LogisticsChannelForm({
               />
             </FormRow>
           ) : null}
-          <FormRow label="目的地" required>
-            <RouteSelector value={routeLine} onChange={setRouteLine} />
+          <FormRow label="目的仓" required>
+            <Select
+              value={routeLine}
+              placeholder="请选择目的仓"
+              options={destinationWarehouseFilterOptions}
+              onValueChange={setRouteLine}
+            />
           </FormRow>
           <FormRow label="运输方式" required>
-            <Select value={transportMode} placeholder="请选择运输方式" options={transportModeOptions.filter((item) => item.value !== "all")} onValueChange={setTransportMode} />
+            <Select value={transportMode} placeholder="请选择运输方式" options={transportModeOptions} onValueChange={setTransportMode} />
           </FormRow>
           <FormRow label="物流周期" required>
             <div className="flex">
@@ -1021,7 +910,7 @@ function LogisticsChannelDetail({
             {record.firstLegProviderMode === "single" ? (
               <InfoItem label="物流商" value={record.providers[0]?.partner ?? ""} />
             ) : null}
-            <InfoItem label="目的地" value={record.routeLine} />
+            <InfoItem label="目的仓" value={record.routeLine} />
             <InfoItem label="运输方式" value={record.transportMode} />
             <InfoItem label="物流周期" value={`${record.agingDays}天`} />
             {record.firstLegProviderMode === "single" ? (
@@ -1094,38 +983,28 @@ export function LogisticsChannelPage({
 }) {
   const [view, setView] = useState<"list" | "create" | "edit" | "detail">("list");
   const [activeRecordId, setActiveRecordId] = useState(logisticsChannelRecords[0]?.id ?? "");
-  const [channelName, setChannelName] = useState("all");
-  const [channelId, setChannelId] = useState("all");
-  const [providerModeFilter, setProviderModeFilter] = useState("all");
-  const [transportMode, setTransportMode] = useState("all");
-  const [routeLine, setRouteLine] = useState("all");
+  const [channelName, setChannelName] = useState("");
+  const [channelId, setChannelId] = useState("");
+  const [providerModeFilter, setProviderModeFilter] = useState("");
+  const [transportMode, setTransportMode] = useState("");
+  const [routeLine, setRouteLine] = useState("");
   const [timeType, setTimeType] = useState("created");
   const [timeRange, setTimeRange] = useState<DateRangeValue>(emptyRange());
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const channelNameOptions = useMemo(
-    () => buildOptions(logisticsChannelRecords.map((record) => record.providerChannelName), "全部物流渠道"),
-    [],
-  );
-  const channelIdOptions = useMemo(
-    () => buildOptions(logisticsChannelRecords.map((record) => record.channelId), "全部渠道ID"),
-    [],
-  );
-  const routeLineOptions = useMemo(
-    () => buildOptions(logisticsChannelRecords.map((record) => record.routeLine), "全部目的地"),
-    [],
-  );
   const filteredRecords = useMemo(() => {
+    const channelNameKeyword = channelName.trim();
+    const channelIdKeyword = channelId.trim();
     return logisticsChannelRecords.filter((record) => {
-      const matchesChannelName = channelName === "all" || record.providerChannelName === channelName;
-      const matchesChannelId = channelId === "all" || record.channelId === channelId;
-      const matchesProviderMode = providerModeFilter === "all" || record.firstLegProviderMode === providerModeFilter;
-      const matchesTransport = transportMode === "all" || record.transportMode === transportMode;
-      const matchesRouteLine = routeLine === "all" || record.routeLine === routeLine;
+      const matchesChannelName = !channelNameKeyword || record.providerChannelName.includes(channelNameKeyword);
+      const matchesChannelId = !channelIdKeyword || record.channelId === channelIdKeyword;
+      const matchesProviderMode = !providerModeFilter || record.firstLegProviderMode === providerModeFilter;
+      const matchesTransport = !transportMode || record.transportMode === transportMode;
+      const matchesRouteLine = matchesDestinationWarehouse(record.routeLine, routeLine);
       const timeValue = timeType === "updated" ? record.updatedAt : record.createdAt;
       const matchesTime = inDateRange(timeValue, timeRange);
-      const matchesStatus = status === "all" || record.status === status;
+      const matchesStatus = !status || record.status === status;
 
       return (
         matchesChannelName &&
@@ -1164,14 +1043,14 @@ export function LogisticsChannelPage({
   }, [activeWorkspaceTab]);
 
   function resetFilters() {
-    setChannelName("all");
-    setChannelId("all");
-    setProviderModeFilter("all");
-    setTransportMode("all");
-    setRouteLine("all");
+    setChannelName("");
+    setChannelId("");
+    setProviderModeFilter("");
+    setTransportMode("");
+    setRouteLine("");
     setTimeType("created");
     setTimeRange(emptyRange());
-    setStatus("all");
+    setStatus("");
     setPage(1);
   }
 
@@ -1241,45 +1120,58 @@ export function LogisticsChannelPage({
       <Card>
         <ExclusiveFilterGroup>
         <div className="flex flex-wrap items-center gap-3">
-          <Select className="w-[180px]" options={channelNameOptions} value={channelName} onValueChange={(value) => {
-            setChannelName(value);
-            setPage(1);
-          }} />
-          <Select className="w-[180px]" options={channelIdOptions} value={channelId} onValueChange={(value) => {
-            setChannelId(value);
-            setPage(1);
-          }} />
-          <Select className="w-[180px]" options={firstLegProviderModeFilterOptions} value={providerModeFilter} onValueChange={(value) => {
+          <Input
+            className="w-[180px]"
+            placeholder="请输入物流渠道"
+            value={channelName}
+            onChange={(event) => {
+              setChannelName(event.target.value);
+              setPage(1);
+            }}
+          />
+          <Input
+            className="w-[180px]"
+            placeholder="请输入物流渠道ID"
+            value={channelId}
+            onChange={(event) => {
+              setChannelId(event.target.value);
+              setPage(1);
+            }}
+          />
+          <Select className="w-[180px]" placeholder="头程物流商模式" options={firstLegProviderModeOptions} value={providerModeFilter} onValueChange={(value) => {
             setProviderModeFilter(value);
             setPage(1);
           }} />
-          <Select className="w-[160px]" options={transportModeOptions} value={transportMode} onValueChange={(value) => {
+          <Select className="w-[160px]" placeholder="运输方式" options={transportModeOptions} value={transportMode} onValueChange={(value) => {
             setTransportMode(value);
             setPage(1);
           }} />
-          <Select className="w-[220px]" options={routeLineOptions} value={routeLine} onValueChange={(value) => {
+          <Select className="w-[220px]" placeholder="目的仓" options={destinationWarehouseFilterOptions} value={routeLine} onValueChange={(value) => {
             setRouteLine(value);
             setPage(1);
           }} />
           <Select
             className="w-[128px]"
             value={timeType}
-            onValueChange={setTimeType}
-            options={[
-              { label: "创建时间", value: "created" },
-              { label: "更新时间", value: "updated" },
-            ]}
+            clearable={false}
+            options={timeTypeFilterOptions}
+            onValueChange={(value) => {
+              setTimeType(value);
+              setPage(1);
+            }}
           />
           <DateRangePicker value={timeRange} onChange={(value) => {
             setTimeRange(value);
             setPage(1);
           }} />
-          <Select className="w-[160px]" options={statusOptions} value={status} onValueChange={(value) => {
+          <Select className="w-[160px]" placeholder="状态" options={statusFilterOptions} value={status} onValueChange={(value) => {
             setStatus(value);
             setPage(1);
           }} />
-          <Button variant="primary" size="sm">查询</Button>
-          <Button variant="secondary" size="sm" onClick={resetFilters}>重置</Button>
+          <div className="flex shrink-0 items-center gap-3">
+            <Button variant="primary" size="sm">查询</Button>
+            <Button variant="secondary" size="sm" onClick={resetFilters}>重置</Button>
+          </div>
         </div>
         </ExclusiveFilterGroup>
       </Card>
@@ -1300,7 +1192,6 @@ export function LogisticsChannelPage({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" size="sm">导出</Button>
-            <Button variant="secondary" size="sm">列设置</Button>
           </div>
         </div>
 
@@ -1312,7 +1203,7 @@ export function LogisticsChannelPage({
                 <th className={tableHeadCell}>渠道ID</th>
                 <th className={tableHeadCell}>头程物流商模式</th>
                 <th className={tableHeadCell}>运输方式</th>
-                <th className={tableHeadCell}>目的地</th>
+                <th className={tableHeadCell}>目的仓</th>
                 <th className={tableHeadCell}>物流周期</th>
                 <th className={tableHeadCell}>状态</th>
                 <th className={tableHeadCell}>创建人/创建时间</th>
@@ -1327,7 +1218,9 @@ export function LogisticsChannelPage({
                   <td className="whitespace-nowrap px-3 py-3">{record.channelId}</td>
                   <td className="whitespace-nowrap px-3 py-3">{getProviderModeLabel(record.firstLegProviderMode)}</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.transportMode}</td>
-                  <td className="max-w-[260px] truncate px-3 py-3" title={record.routeLine}>{record.routeLine}</td>
+                  <td className="max-w-[260px] truncate px-3 py-3" title={getPrimaryDestinationWarehouse(record.routeLine)}>
+                    {getPrimaryDestinationWarehouse(record.routeLine)}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-3">{record.agingDays}天</td>
                   <td className="whitespace-nowrap px-3 py-3">{record.status}</td>
                   <td className="whitespace-nowrap px-3 py-3">
