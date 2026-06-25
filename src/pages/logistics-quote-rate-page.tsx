@@ -53,16 +53,55 @@ const serviceScopeOptions = [
 ];
 const serviceScopeFilterOptions = serviceScopeOptions;
 
-const originWarehouseOptions = ["义乌集货仓", "深圳集货仓", "宁波集货仓", "广州集货仓"];
+const originWarehouseOptions = [
+  "亚马逊二部仓",
+  "亚马逊一部仓",
+  "独立站仓",
+  "eBay仓",
+  "亚马逊-独立站-eBay-样品仓",
+  "Tiktok仓",
+  "TEMU仓",
+  "沃尔玛仓",
+  "虚拟仓-SU01184-工厂直发",
+  "虚拟仓-SU01043-委外加工",
+  "虚拟仓-SU01178-工厂直发",
+  "虚拟仓-SU01105-亚马逊一部仓工厂直发",
+  "虚拟仓-SU01068-独立站工厂直发",
+  "虚拟仓-SU01033-独立站工厂直发",
+  "虚拟仓-SU00395-委外加工",
+  "虚拟仓-SU00002-委外加工",
+  "虚拟仓-SU01089-独立站海外工厂直发",
+  "虚拟仓-SU01161-亚马逊一部仓委外加工",
+  "虚拟仓-SU01105-亚马逊一部工厂直发",
+  "虚拟仓-工厂直发-eBay仓",
+  "虚拟仓-工厂直发-亚马逊二部仓",
+  "虚拟仓-工厂直发-亚马逊一部仓",
+  "虚拟仓-工厂直发-独立站仓",
+  "虚拟仓-工厂直发-Tiktok仓",
+  "虚拟仓-工厂直发-TEMU仓",
+  "虚拟仓-工厂直发-沃尔玛仓",
+  "速卖通仓",
+  "虚拟仓-中基云仓",
+];
 const destinationWarehouseOptions = [
-  "谷仓美西洛杉矶仓",
-  "美东纽约仓",
-  "美南休斯顿仓",
-  "加拿大多伦多仓",
-  "加拿大温哥华仓",
-  "德国科隆仓",
-  "英国伦敦仓",
-  "易达云美东仓",
+  "谷仓 美东仓库",
+  "谷仓 美西仓库",
+  "谷仓 美南仓库",
+  "谷仓[2]-G14667 美东仓库",
+  "谷仓[2]-G14667 美南仓库",
+  "谷仓[2]-G14667 美西仓库",
+  "谷仓[3]-G15337 美东仓库",
+  "谷仓[3]-G15337 美南仓库",
+  "谷仓[3]-G15337 美西仓库",
+  "谷仓[4]-G16059 加州区",
+  "谷仓-G9492 德国区",
+  "谷仓-G9492 英国区",
+  "谷仓-G9492 达拉斯区",
+  "谷仓[3]-G15337 达拉斯区",
+  "良仓 美西01",
+  "良仓 美南06",
+  "良仓 新泽西6号仓",
+  "良仓 美西10",
 ];
 const originWarehouseFilterOptions = originWarehouseOptions.map((warehouse) => ({
   label: warehouse,
@@ -124,13 +163,14 @@ function getQuoteFeeItems(serviceScope: ServiceScope, shippingMode: ShippingMode
 }
 
 function getServiceTypeQuoteConfigs(serviceScope: ServiceScope, shippingMode: ShippingMode): ServiceTypeQuoteConfig[] {
-  if (shippingMode === "整柜") {
-    return [{ serviceType: serviceScope === "全程运输" ? "全程运输" : "整柜报价", feeItems: fullContainerFeeItems }];
-  }
   if (serviceScope === "全程运输") {
     return [{ serviceType: "全程运输", feeItems: getQuoteFeeItems(serviceScope, shippingMode) }];
   }
   return segmentedServiceTypeQuoteConfigs;
+}
+
+function getServiceTypeFeeItems(config: ServiceTypeQuoteConfig, shippingMode: ShippingMode) {
+  return shippingMode === "整柜" ? fullContainerFeeItems : config.feeItems;
 }
 
 function getProviderCurrency(provider: string) {
@@ -146,8 +186,8 @@ const quoteRateRecords: QuoteRateRecord[] = [
     logisticsProvider: "义乌市双捷国际货运代理有限公司、浙江融盛国际物流有限公司",
     logisticsChannel: "美南标快",
     serviceScope: "分段运输",
-    origin: "义乌集货仓",
-    destination: "谷仓美西洛杉矶仓",
+    origin: "亚马逊二部仓",
+    destination: "谷仓 美西仓库",
     currency: "USD",
     taxIncluded: "是",
     validFrom: "2026-06-01",
@@ -168,8 +208,8 @@ const quoteRateRecords: QuoteRateRecord[] = [
     logisticsProvider: "浙江融盛国际物流有限公司",
     logisticsChannel: "欧洲快线",
     serviceScope: "全程运输",
-    origin: "深圳集货仓",
-    destination: "德国科隆仓",
+    origin: "独立站仓",
+    destination: "谷仓-G9492 德国区",
     currency: "EUR",
     taxIncluded: "否",
     validFrom: "2026-06-10",
@@ -190,8 +230,8 @@ const quoteRateRecords: QuoteRateRecord[] = [
     logisticsProvider: "宁波赛蓝供应链服务有限公司",
     logisticsChannel: "加拿大卡派",
     serviceScope: "全程运输",
-    origin: "宁波集货仓",
-    destination: "加拿大多伦多仓",
+    origin: "Tiktok仓",
+    destination: "良仓 美西01",
     currency: "CAD",
     taxIncluded: "是",
     validFrom: "2026-06-15",
@@ -605,18 +645,20 @@ function AmountInput({
 function QuoteRateForm({
   mode,
   record,
+  isCopy = false,
   onBack,
   onSubmit,
 }: {
   mode: "create-fcl" | "edit-fcl" | "create-lcl" | "edit-lcl";
   record?: QuoteRateRecord;
+  isCopy?: boolean;
   onBack: () => void;
   onSubmit: () => void;
 }) {
   const shippingMode: ShippingMode = mode.includes("fcl") ? "整柜" : "散货";
   const initialPricingMode =
     record?.pricingMode === "按重量区间报价" ? "按重量段报价" : record?.pricingMode;
-  const [quoteName, setQuoteName] = useState(record?.quoteName ?? "");
+  const [quoteName, setQuoteName] = useState(isCopy ? "" : (record?.quoteName ?? ""));
   const [logisticsProvider, setLogisticsProvider] = useState(record?.logisticsProvider?.split("、")[0] ?? "");
   const [serviceScope, setServiceScope] = useState<ServiceScope>(record?.serviceScope ?? "全程运输");
   const [origin, setOrigin] = useState(() => getPrimaryWarehouse(record?.origin ?? ""));
@@ -658,7 +700,7 @@ function QuoteRateForm({
               onChange={(event) => setQuoteName(event.target.value)}
             />
           </FormRow>
-          {record ? (
+          {record && !isCopy ? (
             <FormRow label="报价ID">
               <Input value={record.quoteId} readOnly />
             </FormRow>
@@ -752,7 +794,7 @@ function QuoteRateForm({
                     }}
                     scope={`${serviceScope}-${config.serviceType}`}
                     provider={logisticsProvider}
-                    feeItems={fullContainerFeeItems}
+                    feeItems={getServiceTypeFeeItems(config, shippingMode)}
                     defaultCurrency={providerCurrency}
                   />
                 ) : (
@@ -1121,7 +1163,7 @@ function QuoteRateDetail({
                 shippingMode={record.shippingMode}
               />
               <div className={feeFieldGridClass}>
-                {(record.shippingMode === "整柜" ? fullContainerFeeItems : config.feeItems).map((label, feeIndex) => (
+                {getServiceTypeFeeItems(config, record.shippingMode).map((label, feeIndex) => (
                   <FeeDetailField
                     key={label}
                     label={label}
@@ -1175,9 +1217,11 @@ export function LogisticsQuoteRatePage({
 }) {
   const view = resolveQuoteRateView(activeWorkspaceTab);
   const [activeRecordId, setActiveRecordId] = useState(quoteRateRecords[0]?.id ?? "");
+  const [copySourceRecord, setCopySourceRecord] = useState<QuoteRateRecord | undefined>();
   const [quoteNameFilter, setQuoteNameFilter] = useState("");
   const [quoteId, setQuoteId] = useState("");
   const [providers, setProviders] = useState<string[]>([]);
+  const [logisticsChannels, setLogisticsChannels] = useState<string[]>([]);
   const [serviceScopeFilter, setServiceScopeFilter] = useState("");
   const [originFilters, setOriginFilters] = useState<string[]>([]);
   const [destinationFilters, setDestinationFilters] = useState<string[]>([]);
@@ -1191,6 +1235,10 @@ export function LogisticsQuoteRatePage({
     () => uniqueOptions(quoteRateRecords.map((record) => getPrimaryLogisticsProvider(record.logisticsProvider))),
     [],
   );
+  const logisticsChannelFilterOptions = useMemo(
+    () => uniqueOptions(quoteRateRecords.map((record) => record.logisticsChannel)),
+    [],
+  );
 
   const filteredRecords = useMemo(() => {
     return quoteRateRecords.filter((record) => {
@@ -1198,14 +1246,15 @@ export function LogisticsQuoteRatePage({
       const matchesQuoteName = !quoteNameFilter.trim() || record.quoteName.includes(quoteNameFilter.trim());
       const matchesQuoteId = !quoteId.trim() || record.quoteId === quoteId.trim();
       const matchesProvider = providers.length === 0 || providers.includes(recordProvider);
+      const matchesLogisticsChannel = logisticsChannels.length === 0 || logisticsChannels.includes(record.logisticsChannel);
       const matchesServiceScope = !serviceScopeFilter || record.serviceScope === serviceScopeFilter;
       const matchesOrigin = matchesWarehouseFilter(record.origin, originFilters);
       const matchesDestination = matchesWarehouseFilter(record.destination, destinationFilters);
       const timeValue = timeType === "updated" ? record.updatedAt : record.createdAt;
       const matchesTime = inDateRange(timeValue, timeRange);
-      return matchesQuoteName && matchesQuoteId && matchesProvider && matchesServiceScope && matchesOrigin && matchesDestination && matchesTime;
+      return matchesQuoteName && matchesQuoteId && matchesProvider && matchesLogisticsChannel && matchesServiceScope && matchesOrigin && matchesDestination && matchesTime;
     });
-  }, [destinationFilters, originFilters, providers, quoteId, quoteNameFilter, serviceScopeFilter, timeRange, timeType]);
+  }, [destinationFilters, logisticsChannels, originFilters, providers, quoteId, quoteNameFilter, serviceScopeFilter, timeRange, timeType]);
 
   const totalPages = Math.max(Math.ceil(filteredRecords.length / pageSize), 1);
   const safePage = Math.min(page, totalPages);
@@ -1226,6 +1275,7 @@ export function LogisticsQuoteRatePage({
     setQuoteNameFilter("");
     setQuoteId("");
     setProviders([]);
+    setLogisticsChannels([]);
     setServiceScopeFilter("");
     setOriginFilters([]);
     setDestinationFilters([]);
@@ -1243,24 +1293,41 @@ export function LogisticsQuoteRatePage({
   }
 
   function openEdit(record: QuoteRateRecord) {
+    setCopySourceRecord(undefined);
     setActiveRecordId(record.id);
     onOpenWorkspaceTab?.(record.shippingMode === "整柜" ? "logistics-quote-rate-edit-fcl" : "logistics-quote-rate-edit-lcl");
   }
 
   function openDetail(record: QuoteRateRecord) {
+    setCopySourceRecord(undefined);
     setActiveRecordId(record.id);
     onOpenWorkspaceTab?.("logistics-quote-rate-detail");
   }
 
+  function openCopy(record: QuoteRateRecord) {
+    setActiveRecordId(record.id);
+    setCopySourceRecord(record);
+    onOpenWorkspaceTab?.(record.shippingMode === "整柜" ? "logistics-quote-rate-create-fcl" : "logistics-quote-rate-create-lcl");
+  }
+
   if (view === "create-fcl" || view === "create-lcl" || view === "edit-fcl" || view === "edit-lcl") {
     const isEdit = view === "edit-fcl" || view === "edit-lcl";
+    const isCopy = !isEdit && copySourceRecord?.shippingMode === (view === "create-fcl" ? "整柜" : "散货");
+    const formRecord = isEdit ? activeRecord : (isCopy ? copySourceRecord : undefined);
     return (
       <QuoteRateForm
-        key={activeWorkspaceTab}
+        key={`${activeWorkspaceTab}-${isCopy ? copySourceRecord?.id : "blank"}`}
         mode={view}
-        record={isEdit ? activeRecord : undefined}
-        onBack={() => onOpenWorkspaceTab?.("logistics-quote-rate")}
-        onSubmit={() => onOpenWorkspaceTab?.("logistics-quote-rate")}
+        record={formRecord}
+        isCopy={isCopy}
+        onBack={() => {
+          setCopySourceRecord(undefined);
+          onOpenWorkspaceTab?.("logistics-quote-rate");
+        }}
+        onSubmit={() => {
+          setCopySourceRecord(undefined);
+          onOpenWorkspaceTab?.("logistics-quote-rate");
+        }}
       />
     );
   }
@@ -1293,7 +1360,24 @@ export function LogisticsQuoteRatePage({
             setQuoteId(event.target.value);
             setPage(1);
           }} />
-          <MultiSelectFilter placeholder="物流商" options={providerFilterOptions} value={providers} onChange={setProviders} />
+          <MultiSelectFilter
+            placeholder="物流商"
+            options={providerFilterOptions}
+            value={providers}
+            onChange={(value) => {
+              setProviders(value);
+              setPage(1);
+            }}
+          />
+          <MultiSelectFilter
+            placeholder="物流渠道"
+            options={logisticsChannelFilterOptions}
+            value={logisticsChannels}
+            onChange={(value) => {
+              setLogisticsChannels(value);
+              setPage(1);
+            }}
+          />
           <Select className="w-[150px]" placeholder="服务范围" options={serviceScopeFilterOptions} value={serviceScopeFilter} onValueChange={(value) => {
             setServiceScopeFilter(value);
             setPage(1);
@@ -1344,14 +1428,20 @@ export function LogisticsQuoteRatePage({
             <Button
               variant="primary"
               size="sm"
-              onClick={() => onOpenWorkspaceTab?.("logistics-quote-rate-create-fcl")}
+              onClick={() => {
+                setCopySourceRecord(undefined);
+                onOpenWorkspaceTab?.("logistics-quote-rate-create-fcl");
+              }}
             >
               添加整柜报价
             </Button>
             <Button
               variant="primary"
               size="sm"
-              onClick={() => onOpenWorkspaceTab?.("logistics-quote-rate-create-lcl")}
+              onClick={() => {
+                setCopySourceRecord(undefined);
+                onOpenWorkspaceTab?.("logistics-quote-rate-create-lcl");
+              }}
             >
               添加散货报价
             </Button>
@@ -1409,8 +1499,11 @@ export function LogisticsQuoteRatePage({
                     <button type="button" className="mr-3 border-0 bg-transparent p-0 text-primary hover:underline" onClick={() => openDetail(record)}>
                       详情
                     </button>
-                    <button type="button" className="border-0 bg-transparent p-0 text-primary hover:underline" onClick={() => openEdit(record)}>
+                    <button type="button" className="mr-3 border-0 bg-transparent p-0 text-primary hover:underline" onClick={() => openEdit(record)}>
                       编辑
+                    </button>
+                    <button type="button" className="border-0 bg-transparent p-0 text-primary hover:underline" onClick={() => openCopy(record)}>
+                      复制
                     </button>
                   </td>
                 </tr>

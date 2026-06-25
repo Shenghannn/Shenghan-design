@@ -7,6 +7,7 @@ import { Card } from "../components/ui/card";
 import { DateRangePicker, type DateRangeValue } from "../components/ui/date-range-picker";
 import { ExclusiveFilterGroup, useExclusiveFilterPanel } from "../components/ui/exclusive-filter-group";
 import { Input } from "../components/ui/input";
+import { MultiSelectFilter } from "../components/ui/multi-select-filter";
 import { Pagination } from "../components/ui/pagination";
 import { Select } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
@@ -400,11 +401,12 @@ const destinationWarehouseFilterOptions = destinationWarehouseOptions.map((wareh
   value: warehouse,
 }));
 
-function matchesDestinationWarehouse(recordValue: string, filterValue: string) {
-  if (!filterValue) {
+function matchesDestinationWarehouse(recordValue: string, selected: string[]) {
+  if (selected.length === 0) {
     return true;
   }
-  return recordValue.split("、").map((item) => item.trim()).includes(filterValue);
+  const recordWarehouses = recordValue.split("、").map((item) => item.trim());
+  return selected.some((warehouse) => recordWarehouses.includes(warehouse));
 }
 
 function getPrimaryDestinationWarehouse(routeLine: string) {
@@ -985,23 +987,30 @@ export function LogisticsChannelPage({
   const [activeRecordId, setActiveRecordId] = useState(logisticsChannelRecords[0]?.id ?? "");
   const [channelName, setChannelName] = useState("");
   const [channelId, setChannelId] = useState("");
+  const [providerFilters, setProviderFilters] = useState<string[]>([]);
   const [providerModeFilter, setProviderModeFilter] = useState("");
-  const [transportMode, setTransportMode] = useState("");
-  const [routeLine, setRouteLine] = useState("");
+  const [transportModeFilters, setTransportModeFilters] = useState<string[]>([]);
+  const [routeLineFilters, setRouteLineFilters] = useState<string[]>([]);
   const [timeType, setTimeType] = useState("created");
   const [timeRange, setTimeRange] = useState<DateRangeValue>(emptyRange());
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const providerFilterOptions = useMemo(
+    () => Array.from(new Set(logisticsChannelRecords.flatMap((record) => record.providers.map((provider) => provider.partner)).filter(Boolean))),
+    [],
+  );
+
   const filteredRecords = useMemo(() => {
     const channelNameKeyword = channelName.trim();
     const channelIdKeyword = channelId.trim();
     return logisticsChannelRecords.filter((record) => {
       const matchesChannelName = !channelNameKeyword || record.providerChannelName.includes(channelNameKeyword);
       const matchesChannelId = !channelIdKeyword || record.channelId === channelIdKeyword;
+      const matchesProvider = providerFilters.length === 0 || record.providers.some((provider) => providerFilters.includes(provider.partner));
       const matchesProviderMode = !providerModeFilter || record.firstLegProviderMode === providerModeFilter;
-      const matchesTransport = !transportMode || record.transportMode === transportMode;
-      const matchesRouteLine = matchesDestinationWarehouse(record.routeLine, routeLine);
+      const matchesTransport = transportModeFilters.length === 0 || transportModeFilters.includes(record.transportMode);
+      const matchesRouteLine = matchesDestinationWarehouse(record.routeLine, routeLineFilters);
       const timeValue = timeType === "updated" ? record.updatedAt : record.createdAt;
       const matchesTime = inDateRange(timeValue, timeRange);
       const matchesStatus = !status || record.status === status;
@@ -1009,6 +1018,7 @@ export function LogisticsChannelPage({
       return (
         matchesChannelName &&
         matchesChannelId &&
+        matchesProvider &&
         matchesProviderMode &&
         matchesTransport &&
         matchesRouteLine &&
@@ -1016,7 +1026,7 @@ export function LogisticsChannelPage({
         matchesStatus
       );
     });
-  }, [channelId, channelName, providerModeFilter, routeLine, status, timeRange, timeType, transportMode]);
+  }, [channelId, channelName, providerFilters, providerModeFilter, routeLineFilters, status, timeRange, timeType, transportModeFilters]);
 
   const totalPages = Math.max(Math.ceil(filteredRecords.length / pageSize), 1);
   const safePage = Math.min(page, totalPages);
@@ -1045,9 +1055,10 @@ export function LogisticsChannelPage({
   function resetFilters() {
     setChannelName("");
     setChannelId("");
+    setProviderFilters([]);
     setProviderModeFilter("");
-    setTransportMode("");
-    setRouteLine("");
+    setTransportModeFilters([]);
+    setRouteLineFilters([]);
     setTimeType("created");
     setTimeRange(emptyRange());
     setStatus("");
@@ -1138,18 +1149,38 @@ export function LogisticsChannelPage({
               setPage(1);
             }}
           />
+          <MultiSelectFilter
+            placeholder="物流商"
+            options={providerFilterOptions}
+            value={providerFilters}
+            onChange={(value) => {
+              setProviderFilters(value);
+              setPage(1);
+            }}
+          />
           <Select className="w-[180px]" placeholder="头程物流商模式" options={firstLegProviderModeOptions} value={providerModeFilter} onValueChange={(value) => {
             setProviderModeFilter(value);
             setPage(1);
           }} />
-          <Select className="w-[160px]" placeholder="运输方式" options={transportModeOptions} value={transportMode} onValueChange={(value) => {
-            setTransportMode(value);
-            setPage(1);
-          }} />
-          <Select className="w-[220px]" placeholder="目的仓" options={destinationWarehouseFilterOptions} value={routeLine} onValueChange={(value) => {
-            setRouteLine(value);
-            setPage(1);
-          }} />
+          <MultiSelectFilter
+            placeholder="运输方式"
+            options={transportModeOptions}
+            value={transportModeFilters}
+            onChange={(value) => {
+              setTransportModeFilters(value);
+              setPage(1);
+            }}
+          />
+          <MultiSelectFilter
+            className="w-[220px]"
+            placeholder="目的仓"
+            options={destinationWarehouseFilterOptions}
+            value={routeLineFilters}
+            onChange={(value) => {
+              setRouteLineFilters(value);
+              setPage(1);
+            }}
+          />
           <Select
             className="w-[128px]"
             value={timeType}
