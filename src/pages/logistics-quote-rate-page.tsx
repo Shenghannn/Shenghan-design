@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -84,8 +84,19 @@ const providerCurrencyMap: Record<string, string> = {
   "宁波赛蓝供应链服务有限公司": "CAD",
 };
 
+const fullContainerFeeItems = [
+  "海运费",
+  "订舱费",
+  "拖车费",
+  "报关费",
+  "关税",
+  "清关费",
+  "派送费",
+  "附加费",
+];
+
 const fullTransportFeeItemsByShippingMode: Record<ShippingMode, string[]> = {
-  整柜: ["全程运输费", "提货费", "报关费", "目的港服务费", "派送费"],
+  整柜: fullContainerFeeItems,
   散货: ["全程运输费", "入仓操作费", "报关费", "清关费", "派送费"],
 };
 
@@ -113,6 +124,9 @@ function getQuoteFeeItems(serviceScope: ServiceScope, shippingMode: ShippingMode
 }
 
 function getServiceTypeQuoteConfigs(serviceScope: ServiceScope, shippingMode: ShippingMode): ServiceTypeQuoteConfig[] {
+  if (shippingMode === "整柜") {
+    return [{ serviceType: serviceScope === "全程运输" ? "全程运输" : "整柜报价", feeItems: fullContainerFeeItems }];
+  }
   if (serviceScope === "全程运输") {
     return [{ serviceType: "全程运输", feeItems: getQuoteFeeItems(serviceScope, shippingMode) }];
   }
@@ -288,9 +302,13 @@ function FeeSummaryToolbar({
   onDiscountValueChange,
   exchangeRate,
   onExchangeRateChange,
+  insuranceRate,
+  onInsuranceRateChange,
   currency,
   onCurrencyChange,
   total,
+  errors,
+  showErrors,
 }: {
   discountType: "折扣" | "减免";
   onDiscountTypeChange: (value: "折扣" | "减免") => void;
@@ -298,13 +316,18 @@ function FeeSummaryToolbar({
   onDiscountValueChange: (value: number) => void;
   exchangeRate: number;
   onExchangeRateChange: (value: number) => void;
+  insuranceRate: number;
+  onInsuranceRateChange: (value: number) => void;
   currency: string;
   onCurrencyChange: (value: string) => void;
   total: number;
+  errors?: FeeSummaryErrors;
+  showErrors?: boolean;
 }) {
+  const discountLabel = discountType === "折扣" ? "折扣率(%)" : "减免金额";
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 lg:flex-nowrap lg:justify-end">
-      <SummaryField label="优惠方式">
+    <div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-3 gap-y-2 lg:flex-nowrap lg:justify-end">
+      <SummaryField label="优惠方式" required error={showErrors ? errors?.discountType : undefined}>
         <DiscountTypeRadios
           value={discountType}
           onChange={(value) => {
@@ -313,7 +336,7 @@ function FeeSummaryToolbar({
           }}
         />
       </SummaryField>
-      <SummaryField label={discountType === "折扣" ? "折扣率(%)" : "减免金额"}>
+      <SummaryField label={discountLabel} required error={showErrors ? errors?.discountValue : undefined}>
         <AmountInput
           compact
           value={discountValue}
@@ -321,10 +344,13 @@ function FeeSummaryToolbar({
           onChange={(value) => onDiscountValueChange(discountType === "折扣" ? Math.min(value, 100) : value)}
         />
       </SummaryField>
-      <SummaryField label="汇率">
+      <SummaryField label="汇率" required error={showErrors ? errors?.exchangeRate : undefined}>
         <AmountInput compact value={exchangeRate} placeholder="0.00" onChange={onExchangeRateChange} />
       </SummaryField>
-      <SummaryField label="币种">
+      <SummaryField label="保险费率(%)">
+        <AmountInput compact value={insuranceRate} placeholder="0.00" onChange={onInsuranceRateChange} />
+      </SummaryField>
+      <SummaryField label="币种" required error={showErrors ? errors?.currency : undefined}>
         <Select
           className={feeCurrencySelectClassName}
           menuMinWidth={feeCurrencySelectMenuMinWidth}
@@ -344,38 +370,30 @@ function FeeSummaryToolbar({
   );
 }
 
-function FeeSummaryDisplay({ totalPrice, currency }: { totalPrice: string; currency: string }) {
+function SummaryField({
+  label,
+  children,
+  showColon = false,
+  required = false,
+  error,
+}: {
+  label: string;
+  children: ReactNode;
+  showColon?: boolean;
+  required?: boolean;
+  error?: string;
+}) {
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 lg:flex-nowrap lg:justify-end">
-      <SummaryField label="优惠方式" showColon>
-        <span className="text-mini text-text-primary">折扣</span>
-      </SummaryField>
-      <SummaryField label="折扣率(%)" showColon>
-        <span className="text-mini tabular-nums text-text-primary">0%</span>
-      </SummaryField>
-      <SummaryField label="汇率" showColon>
-        <span className="text-mini tabular-nums text-text-primary">7.12</span>
-      </SummaryField>
-      <SummaryField label="币种" showColon>
-        <span className="text-mini text-text-primary">{currency || "-"}</span>
-      </SummaryField>
-      <SummaryField label="总价格" showColon>
-        <span className="inline-flex h-7 min-w-[88px] items-center rounded-sm bg-bg-page px-2 text-mini font-medium tabular-nums text-text-primary">
-          {totalPrice}
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className={cn("flex min-w-0 items-center", inlineFieldGapClass)}>
+        <span className={inlineFieldLabelClass}>
+          {required ? <span className="mr-0.5 text-danger">*</span> : null}
+          {label}
+          {showColon ? "：" : ""}
         </span>
-      </SummaryField>
-    </div>
-  );
-}
-
-function SummaryField({ label, children, showColon = false }: { label: string; children: ReactNode; showColon?: boolean }) {
-  return (
-    <div className={cn("flex min-w-0 items-center", inlineFieldGapClass)}>
-      <span className={inlineFieldLabelClass}>
-        {label}
-        {showColon ? "：" : ""}
-      </span>
-      <div className="min-w-0 shrink-0">{children}</div>
+        <div className="min-w-0 shrink-0">{children}</div>
+      </div>
+      {error ? <span className="pl-[86px] text-mini leading-none text-danger">{error}</span> : null}
     </div>
   );
 }
@@ -403,14 +421,30 @@ function ServiceTypeQuoteTitle({ serviceType }: { serviceType: string }) {
   );
 }
 
-function FeeField({ label, children, showColon = false }: { label: string; children: ReactNode; showColon?: boolean }) {
+function FeeField({
+  label,
+  children,
+  showColon = false,
+  required = false,
+  error,
+}: {
+  label: string;
+  children: ReactNode;
+  showColon?: boolean;
+  required?: boolean;
+  error?: string;
+}) {
   return (
-    <div className={cn("flex min-w-0 items-center text-small", inlineFieldGapClass)}>
-      <span className={inlineFieldLabelClass}>
-        {label}
-        {showColon ? "：" : ""}
-      </span>
-      <div className="min-w-0 flex-1">{children}</div>
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className={cn("flex min-w-0 items-center text-small", inlineFieldGapClass)}>
+        <span className={inlineFieldLabelClass}>
+          {required ? <span className="mr-0.5 text-danger">*</span> : null}
+          {label}
+          {showColon ? "：" : ""}
+        </span>
+        <div className="min-w-0 flex-1">{children}</div>
+      </div>
+      {error ? <span className="pl-[86px] text-mini leading-none text-danger">{error}</span> : null}
     </div>
   );
 }
@@ -420,6 +454,44 @@ function InfoItem({ label, value }: { label: string; value: string }) {
     <div className="grid grid-cols-1 gap-1 text-small sm:grid-cols-[112px_1fr] sm:gap-3">
       <div className="text-text-secondary">{label}：</div>
       <div className="min-w-0 break-words text-text-primary">{value || "-"}</div>
+    </div>
+  );
+}
+
+function FeeDetailField({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="grid grid-cols-[112px_minmax(0,1fr)] items-center gap-x-3 text-small">
+      <div className="text-right text-text-secondary">{label}：</div>
+      <div className={cn("min-w-0 tabular-nums text-text-primary", valueClassName)}>{value || "-"}</div>
+    </div>
+  );
+}
+
+function FeeDetailSummary({
+  totalPrice,
+  currency,
+  shippingMode,
+}: {
+  totalPrice: string;
+  currency: string;
+  shippingMode?: ShippingMode;
+}) {
+  return (
+    <div className="mb-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <FeeDetailField label="优惠方式" value="折扣" />
+      <FeeDetailField label="折扣率(%)" value="0%" />
+      <FeeDetailField label="汇率" value="7.12" />
+      {shippingMode === "整柜" ? <FeeDetailField label="保险费率(%)" value="0.00" /> : null}
+      <FeeDetailField label="币种" value={currency} />
+      <FeeDetailField label="总价格" value={totalPrice} valueClassName="font-medium" />
     </div>
   );
 }
@@ -438,6 +510,40 @@ function applyDiscount(subtotal: number, discountType: "折扣" | "减免", disc
   }
   return Math.max(subtotal - discountValue, 0);
 }
+
+type FeeSummaryErrors = Partial<Record<"currency" | "discountType" | "discountValue" | "exchangeRate", string>>;
+
+function validateFeeSummaryFields(input: {
+  currency: string;
+  discountType: "折扣" | "减免";
+  discountValue: number;
+  exchangeRate: number;
+}): FeeSummaryErrors {
+  const errors: FeeSummaryErrors = {};
+  if (!input.currency) {
+    errors.currency = "请选择币种";
+  }
+  if (!input.discountType) {
+    errors.discountType = "请选择优惠方式";
+  }
+  if (input.discountType === "折扣") {
+    if (input.discountValue < 1 || input.discountValue > 100) {
+      errors.discountValue = "折扣率需为1-100";
+    }
+  } else if (input.discountValue <= 0) {
+    errors.discountValue = "减免金额必须大于0";
+  }
+  if (input.exchangeRate <= 0) {
+    errors.exchangeRate = "汇率必须大于0";
+  } else if (input.exchangeRate > 999.99) {
+    errors.exchangeRate = "汇率不能超过999.99";
+  }
+  return errors;
+}
+
+export type FeeSectionHandle = {
+  validate: () => boolean;
+};
 
 function AmountInput({
   value,
@@ -524,6 +630,19 @@ function QuoteRateForm({
     [serviceScope, shippingMode],
   );
   const providerCurrency = getProviderCurrency(logisticsProvider);
+  const feeSectionRefs = useRef<Array<FeeSectionHandle | null>>([]);
+
+  function handleSubmit() {
+    if (logisticsProvider) {
+      const feeSectionsValid = serviceTypeQuoteConfigs.every(
+        (_, index) => feeSectionRefs.current[index]?.validate() ?? false,
+      );
+      if (!feeSectionsValid) {
+        return;
+      }
+    }
+    onSubmit();
+  }
 
   return (
     <div className="min-w-0 space-y-4 pb-16">
@@ -620,7 +739,7 @@ function QuoteRateForm({
           </div>
         ) : (
           <div className="mt-4 space-y-4">
-            {serviceTypeQuoteConfigs.map((config) => (
+            {serviceTypeQuoteConfigs.map((config, index) => (
               <div
                 key={config.serviceType}
                 className="min-w-0 overflow-hidden rounded-sm border border-border p-3 sm:p-4"
@@ -628,16 +747,21 @@ function QuoteRateForm({
                 <ServiceTypeQuoteTitle serviceType={config.serviceType} />
                 {shippingMode === "整柜" ? (
                   <FullContainerFeeSection
+                    ref={(instance) => {
+                      feeSectionRefs.current[index] = instance;
+                    }}
                     scope={`${serviceScope}-${config.serviceType}`}
                     provider={logisticsProvider}
-                    feeItems={config.feeItems}
+                    feeItems={fullContainerFeeItems}
                     defaultCurrency={providerCurrency}
                   />
                 ) : (
                   <LooseCargoFeeSection
+                    ref={(instance) => {
+                      feeSectionRefs.current[index] = instance;
+                    }}
                     scope={`${serviceScope}-${config.serviceType}`}
                     provider={logisticsProvider}
-                    feeItems={config.feeItems}
                     pricingMode={pricingMode}
                     defaultCurrency={providerCurrency}
                   />
@@ -651,7 +775,7 @@ function QuoteRateForm({
 
       <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap justify-center gap-3 border-t border-border bg-white px-4 py-3 shadow-lg sm:px-6">
         <Button variant="secondary" size="sm" onClick={onBack}>取消</Button>
-        <Button variant="primary" size="sm" onClick={onSubmit}>确定</Button>
+        <Button variant="primary" size="sm" onClick={handleSubmit}>确定</Button>
       </div>
     </div>
   );
@@ -661,17 +785,17 @@ function getFeeLabels(feeItems: string[]) {
   return Array.from(new Set(feeItems));
 }
 
-function FullContainerFeeSection({
-  scope,
-  provider,
-  feeItems,
-  defaultCurrency,
-}: {
+type FullContainerFeeSectionProps = {
   scope: string;
   provider: string;
   feeItems: string[];
   defaultCurrency: string;
-}) {
+};
+
+const FullContainerFeeSection = forwardRef<FeeSectionHandle, FullContainerFeeSectionProps>(function FullContainerFeeSection(
+  { scope, provider, feeItems, defaultCurrency },
+  ref,
+) {
   const [feeLabels, setFeeLabels] = useState(getFeeLabels(feeItems));
   const [fees, setFees] = useState<Record<string, number>>(
     Object.fromEntries(feeLabels.map((label) => [label, 0])),
@@ -680,6 +804,9 @@ function FullContainerFeeSection({
   const [discountType, setDiscountType] = useState<"折扣" | "减免">("折扣");
   const [discountValue, setDiscountValue] = useState(0);
   const [exchangeRate, setExchangeRate] = useState(0);
+  const [insuranceRate, setInsuranceRate] = useState(0);
+  const [errors, setErrors] = useState<FeeSummaryErrors>({});
+  const [showErrors, setShowErrors] = useState(false);
   const subtotal = sumValues(fees);
   const total = applyDiscount(subtotal, discountType, discountValue);
 
@@ -690,6 +817,44 @@ function FullContainerFeeSection({
     setCurrency(defaultCurrency);
   }, [defaultCurrency, feeItems, provider, scope]);
 
+  useImperativeHandle(ref, () => ({
+    validate() {
+      const nextErrors = validateFeeSummaryFields({ currency, discountType, discountValue, exchangeRate });
+      setErrors(nextErrors);
+      setShowErrors(true);
+      return Object.keys(nextErrors).length === 0;
+    },
+  }));
+
+  function updateCurrency(value: string) {
+    setCurrency(value);
+    if (showErrors) {
+      setErrors((current) => ({ ...current, currency: undefined }));
+    }
+  }
+
+  function updateDiscountType(value: "折扣" | "减免") {
+    setDiscountType(value);
+    setDiscountValue(0);
+    if (showErrors) {
+      setErrors((current) => ({ ...current, discountType: undefined, discountValue: undefined }));
+    }
+  }
+
+  function updateDiscountValue(value: number) {
+    setDiscountValue(value);
+    if (showErrors) {
+      setErrors((current) => ({ ...current, discountValue: undefined }));
+    }
+  }
+
+  function updateExchangeRate(value: number) {
+    setExchangeRate(value);
+    if (showErrors) {
+      setErrors((current) => ({ ...current, exchangeRate: undefined }));
+    }
+  }
+
   return (
     <div>
       <FeeSectionHeader
@@ -697,14 +862,18 @@ function FullContainerFeeSection({
         summary={
           <FeeSummaryToolbar
             discountType={discountType}
-            onDiscountTypeChange={setDiscountType}
+            onDiscountTypeChange={updateDiscountType}
             discountValue={discountValue}
-            onDiscountValueChange={setDiscountValue}
+            onDiscountValueChange={updateDiscountValue}
             exchangeRate={exchangeRate}
-            onExchangeRateChange={setExchangeRate}
+            onExchangeRateChange={updateExchangeRate}
+            insuranceRate={insuranceRate}
+            onInsuranceRateChange={setInsuranceRate}
             currency={currency}
-            onCurrencyChange={setCurrency}
+            onCurrencyChange={updateCurrency}
             total={total}
+            errors={errors}
+            showErrors={showErrors}
           />
         }
       />
@@ -720,48 +889,75 @@ function FullContainerFeeSection({
       </div>
     </div>
   );
-}
+});
 
-function LooseCargoFeeSection({
-  scope,
-  provider,
-  feeItems,
-  pricingMode,
-  defaultCurrency,
-}: {
+type LooseCargoFeeSectionProps = {
   scope: string;
   provider: string;
-  feeItems: string[];
   pricingMode: string;
   defaultCurrency: string;
-}) {
-  const [extraFeeLabels, setExtraFeeLabels] = useState(getFeeLabels(feeItems));
+};
+
+const LooseCargoFeeSection = forwardRef<FeeSectionHandle, LooseCargoFeeSectionProps>(function LooseCargoFeeSection(
+  { scope, provider, pricingMode, defaultCurrency },
+  ref,
+) {
   const [rows, setRows] = useState([{ id: "r1", price: 0 }]);
-  const extraFeeKeys = [...extraFeeLabels, "燃油费(%)"];
-  const [extraFees, setExtraFees] = useState<Record<string, number>>(
-    Object.fromEntries(extraFeeKeys.map((label) => [label, 0])),
-  );
   const [currency, setCurrency] = useState(defaultCurrency);
   const [discountType, setDiscountType] = useState<"折扣" | "减免">("折扣");
   const [discountValue, setDiscountValue] = useState(0);
+  const [surcharge, setSurcharge] = useState(0);
   const [exchangeRate, setExchangeRate] = useState(0);
-  const feeSubtotal =
-    rows.reduce((sum, row) => sum + row.price, 0) +
-    extraFeeLabels.reduce((sum, label) => sum + (extraFees[label] ?? 0), 0) +
-    (extraFees["燃油费(%)"] ?? 0);
-  const total = applyDiscount(feeSubtotal, discountType, discountValue);
+  const [insuranceRate, setInsuranceRate] = useState(0);
+  const [errors, setErrors] = useState<FeeSummaryErrors>({});
+  const [showErrors, setShowErrors] = useState(false);
   const isVolumePricing = pricingMode === "按方数报价";
   const rangeLabel = isVolumePricing ? "方数范围" : "重量范围";
   const rangeUnit = isVolumePricing ? "m³" : "KG";
   const priceUnit = isVolumePricing ? "/m³" : "/KG";
+  const discountLabel = discountType === "折扣" ? "折扣(%)" : "减免";
 
   useEffect(() => {
-    const nextLabels = getFeeLabels(feeItems);
-    const nextKeys = [...nextLabels, "燃油费(%)"];
-    setExtraFeeLabels(nextLabels);
-    setExtraFees((current) => Object.fromEntries(nextKeys.map((label) => [label, current[label] ?? 0])));
     setCurrency(defaultCurrency);
-  }, [defaultCurrency, feeItems, provider, scope]);
+  }, [defaultCurrency, provider, scope]);
+
+  useImperativeHandle(ref, () => ({
+    validate() {
+      const nextErrors = validateFeeSummaryFields({ currency, discountType, discountValue, exchangeRate });
+      setErrors(nextErrors);
+      setShowErrors(true);
+      return Object.keys(nextErrors).length === 0;
+    },
+  }));
+
+  function updateCurrency(value: string) {
+    setCurrency(value);
+    if (showErrors) {
+      setErrors((current) => ({ ...current, currency: undefined }));
+    }
+  }
+
+  function updateDiscountType(value: "折扣" | "减免") {
+    setDiscountType(value);
+    setDiscountValue(0);
+    if (showErrors) {
+      setErrors((current) => ({ ...current, discountType: undefined, discountValue: undefined }));
+    }
+  }
+
+  function updateDiscountValue(value: number) {
+    setDiscountValue(value);
+    if (showErrors) {
+      setErrors((current) => ({ ...current, discountValue: undefined }));
+    }
+  }
+
+  function updateExchangeRate(value: number) {
+    setExchangeRate(value);
+    if (showErrors) {
+      setErrors((current) => ({ ...current, exchangeRate: undefined }));
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -825,36 +1021,45 @@ function LooseCargoFeeSection({
         </div>
       </div>
       <div>
-        <FeeSectionHeader
-          title="费用明细"
-          summary={
-            <FeeSummaryToolbar
-              discountType={discountType}
-              onDiscountTypeChange={setDiscountType}
-              discountValue={discountValue}
-              onDiscountValueChange={setDiscountValue}
-              exchangeRate={exchangeRate}
-              onExchangeRateChange={setExchangeRate}
-              currency={currency}
-              onCurrencyChange={setCurrency}
-              total={total}
-            />
-          }
-        />
+        <div className="mb-3 border-b border-border pb-3">
+          <SectionTitle>费用明细</SectionTitle>
+        </div>
         <div className={feeFieldGridClass}>
-          {extraFeeLabels.map((label) => (
-            <FeeField key={label} label={label}>
-              <AmountInput value={extraFees[label] ?? 0} onChange={(value) => setExtraFees((current) => ({ ...current, [label]: value }))} />
-            </FeeField>
-          ))}
-          <FeeField label="燃油费(%)">
-            <AmountInput value={extraFees["燃油费(%)"] ?? 0} onChange={(value) => setExtraFees((current) => ({ ...current, "燃油费(%)": value }))} />
+          <FeeField label="币种" required error={showErrors ? errors.currency : undefined}>
+            <Select
+              className={feeCurrencySelectClassName}
+              menuMinWidth={feeCurrencySelectMenuMinWidth}
+              menuDensity="compact"
+              value={currency}
+              options={optionList(feeCurrencyOptions)}
+              clearable={false}
+              onValueChange={updateCurrency}
+            />
+          </FeeField>
+          <FeeField label="优惠方式" required error={showErrors ? errors.discountType : undefined}>
+            <DiscountTypeRadios value={discountType} onChange={updateDiscountType} />
+          </FeeField>
+          <FeeField label={discountLabel} required error={showErrors ? errors.discountValue : undefined}>
+            <AmountInput
+              value={discountValue}
+              placeholder={discountType === "折扣" ? "1-100" : "0.00"}
+              onChange={(value) => updateDiscountValue(discountType === "折扣" ? Math.min(value, 100) : value)}
+            />
+          </FeeField>
+          <FeeField label="附加费">
+            <AmountInput value={surcharge} placeholder="0.00" onChange={setSurcharge} />
+          </FeeField>
+          <FeeField label="汇率" required error={showErrors ? errors.exchangeRate : undefined}>
+            <AmountInput value={exchangeRate} placeholder="0.00" onChange={updateExchangeRate} />
+          </FeeField>
+          <FeeField label="保险费率(%)">
+            <AmountInput value={insuranceRate} placeholder="0.00" onChange={setInsuranceRate} />
           </FeeField>
         </div>
       </div>
     </div>
   );
-}
+});
 
 function QuoteRateDetail({
   record,
@@ -907,17 +1112,21 @@ function QuoteRateDetail({
               className="min-w-0 overflow-hidden rounded-sm border border-border p-3 sm:p-4"
             >
               <ServiceTypeQuoteTitle serviceType={config.serviceType} />
-              <FeeSectionHeader
-                title="费用明细"
-                summary={<FeeSummaryDisplay totalPrice={record.totalPrice} currency={record.currency} />}
+              <div className="mb-3 border-b border-border pb-3">
+                <SectionTitle>费用明细</SectionTitle>
+              </div>
+              <FeeDetailSummary
+                totalPrice={record.totalPrice}
+                currency={record.currency}
+                shippingMode={record.shippingMode}
               />
               <div className={feeFieldGridClass}>
-                {config.feeItems.map((label, feeIndex) => (
-                  <FeeField key={label} label={label} showColon>
-                    <span className="inline-flex h-7 min-w-0 flex-1 items-center rounded-sm bg-bg-page px-2 text-mini tabular-nums text-text-primary">
-                      {feeIndex === 0 ? record.totalPrice : "0.00"}
-                    </span>
-                  </FeeField>
+                {(record.shippingMode === "整柜" ? fullContainerFeeItems : config.feeItems).map((label, feeIndex) => (
+                  <FeeDetailField
+                    key={label}
+                    label={label}
+                    value={feeIndex === 0 ? record.totalPrice : "0.00"}
+                  />
                 ))}
               </div>
             </div>
@@ -1146,8 +1355,6 @@ export function LogisticsQuoteRatePage({
             >
               添加散货报价
             </Button>
-            <Button variant="secondary" size="sm">导入整柜报价</Button>
-            <Button variant="secondary" size="sm">导入散柜报价</Button>
           </div>
           <Button variant="secondary" size="sm">导出</Button>
         </div>

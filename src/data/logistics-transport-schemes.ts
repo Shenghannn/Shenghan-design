@@ -15,8 +15,8 @@ export const feeCurrencyToCnyRate: Record<string, number> = {
 };
 
 /** 币种选择器：触发区适度宽度，下拉层略宽以保证选项完整展示 */
-export const feeCurrencySelectClassName = "w-[80px]";
-export const feeCurrencySelectMenuMinWidth = 88;
+export const feeCurrencySelectClassName = "w-[96px]";
+export const feeCurrencySelectMenuMinWidth = 96;
 
 export type ChannelTransportScheme = {
   id: string;

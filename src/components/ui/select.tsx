@@ -171,7 +171,7 @@ export function Select({
         aria-haspopup="listbox"
         aria-expanded={open}
         className={cn(
-          "field-control flex min-w-0 items-center justify-between gap-2 pr-10 text-left",
+          "field-control relative flex min-w-0 items-center justify-between gap-2 overflow-hidden pr-10 text-left",
           disabled && "cursor-not-allowed opacity-50",
           className,
         )}
